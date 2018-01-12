@@ -1,21 +1,34 @@
-## Testing Data Storage
+## Data Storage on Android
 
-### Testing for Sensitive Data in Local Storage
+Protecting authentication tokens, private information, and other sensitive data is key to mobile security. In this chapter, you will learn about the APIs Android offers for local data storage and best practices for using them.
+
+The guidelines for saving data can be summarized quite easily: Public data should be available to everyone, but sensitive and private data must be protected, or, better yet, kept out of device storage.
+
+Note that the meaning of "sensitive data" depends on the app that handles it. Data classification is described in detail in the "Identifying Sensitive Data" section of the chapter "Mobile App Security Testing."
+
+### Testing Local Storage for Sensitive Data
 
 #### Overview
 
-[Storing data][fb530e1c] is essential for many mobile applications, for example in order to keep track of user settings or data a user might has keyed in that needs to stored locally or offline. Data can be stored persistently in various ways. The following table shows those mechanisms that are available on the Android platform:
+Conventional wisdom suggests that as little sensitive data as possible should be stored on permanent local storage. In most practical scenarios, however, some type of user data must be stored. For example, asking the user to enter a very complex password every time the app starts isn't a great idea in terms of usability. Most apps must locally cache some kind of authentication token to avoid this. Personally identifiable information (PII) and other types of sensitive data may also be saved if a given scenario calls for it.
 
-* Shared Preferences
-* Internal Storage  
-* External Storage  
-* SQLite Databases  
+Sensitive data is vulnerable when it is not properly protected by the app that is persistently storing it. The app may be able to store the data in several places, for example, on the device or on an external SD card. When you're trying to exploit these kinds of issues, consider that a lot of information may be processed and stored in different locations. Identifying at the outset the kind of information processed by the mobile application and input by the user is important. Identifying information that may be valuable to attackers (e.g., passwords, credit card information, PII) is also important.
 
-The following examples shows snippets of code to demonstrate bad practices that discloses sensitive information and also shows the different mechanisms in Android to store data.
+Disclosing sensitive information has several consequences, including decrypted information. In general, an attacker may identify this information and use it for additional attacks, such as social engineering (if PII has been disclosed), account hijacking (if session information or an authentication token has been disclosed), and gathering information from apps that have a payment option (to attack and abuse them).
+
+[Storing data](https://developer.android.com/guide/topics/data/data-storage.html "Storing Data in Android") is essential for many mobile apps. For example, some apps use data storage to keep track of user settings or user-provided data. Data can be stored persistently in several ways. The following list of storage techniques are widely used on the Android platform:
+
+- Shared Preferences
+- SQLite Databases
+- Realm Databases
+- Internal Storage
+- External Storage
+
+The following code snippets demonstrate bad practices that disclose sensitive information. They also illustrate Android storage mechanisms in detail. For more information, check out the [Security Tips for Storing Data](http://developer.android.com/training/articles/security-tips.html#StoringData "Security Tips for Storing Data") in the Android developer's guide.
 
 ##### Shared Preferences
-
-[SharedPreferences][afd8258f] is a common approach to store Key/Value pairs persistently in the filesystem by using a XML structure. Within an Activity the following code might be used to store sensitive information like a username and a password:
+The SharedPreferences API is commonly used to permanently save small collections of key-value pairs. Data stored in a SharedPreferences object is written to a plain-text XML file. The SharedPreferences object can be declated world-readable (accessible to all apps) or private.
+Misuse of the SharedPreferences API can often lead to exposure of sensitive data. Consider the following example:
 
 ```java
 SharedPreferences sharedPref = getSharedPreferences("key", MODE_WORLD_READABLE);
@@ -25,9 +38,9 @@ editor.putString("password", "supersecret");
 editor.commit();
 ```
 
-Once the activity is called, the file key.xml is created with the provided data. This code is violating several best practices.
+Once the activity has been called, the file key.xml will be created with the provided data. This code violates several best practices.
 
-* The username and password is stored in clear text in `/data/data/<PackageName>/shared_prefs/key.xml`
+- The username and password are stored in clear text in `/data/data/<package-name>/shared_prefs/key.xml`.
 
 ```xml
 <?xml version='1.0' encoding='utf-8' standalone='yes' ?>
@@ -37,40 +50,40 @@ Once the activity is called, the file key.xml is created with the provided data.
 </map>
 ```
 
-* `MODE_WORLD_READABLE` allows all applications to access and read the content of `key.xml`
+- `MODE_WORLD_READABLE` allows all applications to access and read the contents of `key.xml`.
 
 ```bash
 root@hermes:/data/data/sg.vp.owasp_mobile.myfirstapp/shared_prefs # ls -la
--rw-rw-r-- u0_a118 u0_a118    170 2016-04-23 16:51 key.xml
+-rw-rw-r-- u0_a118    170 2016-04-23 16:51 key.xml
 ```
 
-> Please note that `MODE_WORLD_READABLE` and `MODE_WORLD_WRITEABLE` were deprecated in API 17. Although this may not affect newer devices, applications compiled with android:targetSdkVersion set prior to 17 may still be affected, if they run on OS prior to Android 4.2 (`JELLY_BEAN_MR1`).
+> Please note that `MODE_WORLD_READABLE` and `MODE_WORLD_WRITEABLE` were deprecated with API 17. Although newer devices may not be affected by this, applications compiled with an android:targetSdkVersion value less than 17 may be affected if they run on an OS version that was released before Android 4.2 (`JELLY_BEAN_MR1`).
 
 
 ##### SQLite Database (Unencrypted)
 
-SQLite is a SQL database that stores data to a .db file. The Android SDK comes with built in classes to operate SQLite databases. The main package to manage the databases is android.database.sqlite.
-Within an Activity the following code might be used to store sensitive information like a username and a password:
+SQLite is an SQL database engine that stores data in `.db` files. The Android SDK has built-in support for SQLite databases. The main package used to manage the databases is `android.database.sqlite`.
+You may use the following code to store sensitive information within an activity:
 
 ```java
 SQLiteDatabase notSoSecure = openOrCreateDatabase("privateNotSoSecure",MODE_PRIVATE,null);
-notSoSecure.execSQL("CREATE TABLE IF NOT EXISTS Accounts(Username VARCHAR,Password VARCHAR);");
+notSoSecure.execSQL("CREATE TABLE IF NOT EXISTS Accounts(Username VARCHAR, Password VARCHAR);");
 notSoSecure.execSQL("INSERT INTO Accounts VALUES('admin','AdminPass');");
 notSoSecure.close();
 ```
 
-Once the activity is called, the database file `privateNotSoSecure` is created with the provided data and the data is stored in clear text in `/data/data/<PackageName>/databases/privateNotSoSecure`.
+Once the activity has been called, the database file `privateNotSoSecure` will be created with the provided data and stored in the clear text file `/data/data/<package-name>/databases/privateNotSoSecure`.
 
-There might be several files available in the databases directory, besides the SQLite database.
+The database's directory may contain several files besides the SQLite database:
 
-* Journal files: These are temporary files used to implement atomic commit and rollback capabilities in SQLite (see also [tempfiles] ).
-* Lock files: The lock files are part of the locking and journaling mechanism designed to improve concurrency in SQLite and to reduce the writer starvation problem. You can read more here: [lockingv3].
+- [Journal files](https://www.sqlite.org/tempfiles.html "SQLite Journal files"): These are temporary files used to implement atomic commit and rollback.
+- [Lock files](https://www.sqlite.org/lockingv3.html "SQLite Lock Files"): The lock files are part of the locking and journaling feature, which was designed to improve SQLite concurrency and reduce the writer starvation problem.
 
-Unencrypted SQLite databases should not be used to store sensitive information.
+Sensitive information should not be stored in unencrypted SQLite databases.
 
 ##### SQLite Databases (Encrypted)
 
-By using the library [SQLCipher][7e90d2dc] SQLite databases can be encrypted, by providing a password.
+With the library [SQLCipher](https://www.zetetic.net/sqlcipher/sqlcipher-for-android/ "SQLCipher"), SQLite databases can be password-encrypted.
 
 ```java
 SQLiteDatabase secureDB = SQLiteDatabase.openOrCreateDatabase(database, "password123", null);
@@ -80,16 +93,32 @@ secureDB.close();
 
 ```
 
-If encrypted SQLite databases are used, check if the password is hardcoded in the source, stored in shared preferences or hidden somewhere else in the code or file system.
-A secure approach to retrieve the key, instead of storing it locally could be to either:
+If encrypted SQLite databases are used, determine whether the password is hard-coded in the source, stored in shared preferences, or hidden somewhere else in the code or filesystem.
+Secure ways to retrieve the key include:
 
-* Ask the user every time for a PIN or password to decrypt the database, once the App is opened (weak password or PIN is prone to Brute Force Attacks), or
-* Store the key on the server and make it accessible via a Web Service (then the App can only be used when the device is online)
+- Asking the user to decrypt the database with a PIN or password once the app is opened (weak passwords and PINs are vulnerable to brute force attacks)
+- Storing the key on the server and allowing it to be accessed from a web service only (so that the app can be used only when the device is online)
+
+##### Realm Databases
+
+The [Realm Database for Java](https://realm.io/docs/java/latest/ "Realm Database") is becoming more and more popular among developers. The database and its contents can be encrypted with a key stored in the configuration file.
+
+```java
+//the getKey() method either gets the key from the server or from a Keystore, or is deferred from a password.
+RealmConfiguration config = new RealmConfiguration.Builder()
+  .encryptionKey(getKey())
+  .build();
+
+Realm realm = Realm.getInstance(config);
+
+```
+
+If the database is not encrypted, you should be able to obtain the data. If the database *is* encrypted, determine whether the key is hard-coded in the source or resources and whether it is stored unprotected in shared preferences or some other location.
 
 ##### Internal Storage
 
-Files can be saved directly on the device's [internal storage][e65ea363]. By default, files saved to the internal storage are private to your application and other applications cannot access them (nor can the user). When the user uninstalls your application, these files are removed.
-Within an Activity the following code might be used to store sensitive information in the variable test persistently to the internal storage:
+You can save files to the device's [internal storage](http://developer.android.com/guide/topics/data/data-storage.html#filesInternal "Using Internal Storage"). Files saved to internal storage are containerized by default and cannot be accessed by other apps on the device. When the user uninstalls your app, these files are removed.
+The following code would persistently store sensitive data to internal storage:
 
 ```java
 FileOutputStream fos = null;
@@ -103,16 +132,15 @@ try {
    e.printStackTrace();
 }
 ```
+You should check the file mode to make sure that only the app can access the file. You can set this access with `MODE_PRIVATE`. Modes such as `MODE_WORLD_READABLE` (deprecated) and `MODE_WORLD_WRITEABLE` (deprecated) are laxer and may pose a security risk.
 
-The file mode need to be checked, to make sure that only the app itself has access to the file by using `MODE_PRIVATE`. Other modes like `MODE_WORLD_READABLE` (deprecated) and  `MODE_WORLD_WRITEABLE` (deprecated) are more lax and can pose a security risk.
-
-It should also be checked what files are read within the App by searching for the usage of class `FileInputStream`. Part of the internal storage mechanisms is also the cache storage. To cache data temporarily, functions like `getCacheDir()` can be used.
+Search for the class `FileInputStream` to find out which files are opened and read within the app.
 
 ##### External Storage
 
-Every Android-compatible device supports a shared "[external storage][5e4c3059]" that you can use to save files. This can be a removable storage media (such as an SD card) or an internal (non-removable) storage.
-Files saved to the external storage are world-readable and can be modified by the user when they enable USB mass storage to transfer files on a computer.
-Within an Activity the following code might be used to store sensitive information in the variable password persistently to the external storage:
+Every Android-compatible device supports [shared external storage](https://developer.android.com/guide/topics/data/data-storage.html#filesExternal "Using External Storage"). This storage may be removable (such as an SD card) or internal (non-removable).
+Files saved to external storage are world-readable. The user can modify them when USB mass storage is enabled.
+You can use the following code to persistently store sensitive information to external storage as the contents of the file `password.txt`:
 
 ```java
 File file = new File (Environment.getExternalFilesDir(), "password.txt");
@@ -123,280 +151,278 @@ FileOutputStream fos;
     fos.close();
 ```
 
-Once the activity is called, the file is created with the provided data and the data is stored in clear text in the external storage.
+The file will be created and the data will be stored in a clear text file in external storage once the activity has been called.
 
-It’s also worth to know that files stored outside the application folder (internal: `data/data/com.appname/files` or external: `/storage/emulated/0/Android/data/com.appname/files/`) will not be deleted when the user uninstall the application.
-
-##### KeyChain and KeyStore
-
-Mobile operating systems offer different native functions to store sensitive information like credentials and keys encrypted within the device. In case keys or other sensitive information need to be stored, several best practices available at the OS level should be applied to make it harder for attackers to retrieve these information. The following tasks should be done when analysing an App:
-
-* Identify keys and passwords in the App, e.g. entered by the users, sent by the endpoint, shipped within the App and how this sensitive data is processed locally.
-* Decide with the developers if this sensitive stored information locally is needed and if not, how it can be moved to the endpoint or completely deleted.
-
-The credo for saving data can be summarized quite easily: Public data should be available for everybody, but sensitive and private data needs to be protected or not stored in the first place on the device itself.
-
-This vulnerability occurs when sensitive data is not properly protected by an app when persistently storing it. The App might be able to store it in different places, for example locally on the device or on an external SD card. When trying to exploit this kind of issues, consider that there might be a lot of information processed and stored in different locations. It is important to identify at the beginning what kind of information is processed by the mobile application and keyed in by the user and what might be interesting and valuable for an attacker (e.g. passwords, credit card information).
-
-This vulnerability can have many consequences, like disclosure of encryption keys that can be used by an attacker to decrypt information. More generally speaking an attacker might be able to identify this information to use it as a basis for other attacks like social engineering (when PII is disclosed), session hijacking (if session information or a token is disclosed) or gather information from Apps that have a payment option in order to attack and abuse it.
-
+It's also worth knowing that files stored outside the application folder (`data/data/<package-name>/`) will not be deleted when the user uninstalls the application.
 
 #### Static Analysis
 
 ##### Local Storage
 
-As already pointed out, there are several ways to store information within Android. Several checks should therefore be applied to the source code to identify the storage mechanisms used within the Android App and if sensitive data is processed insecurely.
+As previously mentioned, there are several ways to store information on an Android device. You should therefore check several sources to determine the kind of storage used by the Android app and to find out whether the app processes sensitive data insecurely.
 
-* Check `AndroidManifest.xml` for permissions to read and write to external storage, like `uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"`
-* Check the source code for functions and API calls that are used for storing data:
-  * Open the Java Files in an IDE or text editor of your choice or use grep on the command line to search for:
-    * file permissions like:
-      * `MODE_WORLD_READABLE` or `MODE_WORLD_WRITABLE`. IPC files should not be created with permissions of `MODE_WORLD_READABLE` or `MODE_WORLD_WRITABLE` unless it is required as any app would be able to read or write the file even though it may be stored in the app private data directory.
-    * Classes and functions like:
-      * `SharedPreferences` Class (Storage of key-value pairs)
-      * `FileOutPutStream` Class (Using Internal or External Storage)
-      * `getExternal*` functions (Using External Storage)
-      * `getWritableDatabase` function (return a SQLiteDatabase for writing)
-      * `getReadableDatabase` function (return a SQLiteDatabase for reading)
-      * `getCacheDir` and `getExternalCacheDirs` function (Using cached files)
+- Check `AndroidManifest.xml` for read/write external storage permissions, for example, `uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"`.
+- Check the source code for keywords and API calls that are used to store data:
+    - File permissions, such as:
+      - `MODE_WORLD_READABLE` or `MODE_WORLD_WRITABLE`: You should avoid using `MODE_WORLD_WRITEABLE` and `MODE_WORLD_READABLE` for files because any app will be able to read from or write to the files, even if they are stored in the app's private data directory. If data must be shared with other applications, consider a content provider. A content provider offers read and write permissions to other apps and can grant dynamic permission on a case-by-case basis.
+    - Classes and functions, such as:
+      - the `SharedPreferences` class ( stores key-value pairs)
+      - the `FileOutPutStream` class (uses internal or external storage)
+      - the `getExternal*` functions (use external storage)
+      - the `getWritableDatabase` function (returns a SQLiteDatabase for writing)
+      - the `getReadableDatabase` function (returns a SQLiteDatabase for reading)
+      - the `getCacheDir` and `getExternalCacheDirs` function (use cached files)
 
-##### KeyChain and KeyStore
+Encryption should implemented using proven SDK functions. The following describes bad practices to look for in the source code:
 
-Encryption operations should rely on solid and tested functions provided by the SDK. The following describes different “bad practices” that should be checked with the source code:
+-  Locally stored sensitive information "encrypted" via simple bit operations like XOR or bit flipping. These operations should be avoided because the encrypted data can be recovered easily.
+- Keys used or created without Android onboard features, such as the Android KeyStore
+- Keys disclosed by hard-coding
 
-* Check if simple bit operations are used, like XOR or Bit flipping to “encrypt” sensitive information like credentials or private keys that are stored locally. This should be avoided as the data can easily be recovered.
-* Check if keys are created or used without taking advantage of the Android onboard features like the [KeyStore][19149717].
-* Identify what kind of information is stored persistently and if credentials or keys are disclosed.
+###### Typical Misuse: Hard-coded Cryptographic Keys
 
-When going through the source code it should be analyzed if native mechanisms that are offered by Android are applied to the identified sensitive information. Sensitive information should not be stored in clear text and should be encrypted. If sensitive information needs to be stored on the device itself, several functions/API calls are available to protect the data on the Android device by using the **KeyChain** and **Keystore**. The following controls should therefore be used:
+Hard-coded and world-readable cryptographic keys significantly increase the possibility that encrypted data will be recovered. Once an attacker obtains the data, decrypting it is trivial. Symmetric cryptography keys must be stored on the device, so identifying them is just a matter of time and effort. Consider the following code:
 
-* Check if a key pair is created within the App by looking for the class `KeyPairGenerator`.
-* Check that the application is using the KeyStore and Cipher mechanisms to securely store encrypted information on the device. Look for the pattern `import java.security.KeyStore`, `import javax.crypto.Cipher`, `import java.security.SecureRandom` and it’s usage.
-* The `store(OutputStream stream, char[] password)` function can be used to store the KeyStore to disk with a specified password. Check that the password provided is not hardcoded and is defined by user input as this should only be known to the user. Look for the pattern `.store(`.
+```Java
+this.db = localUserSecretStore.getWritableDatabase("SuperPassword123");
+```
 
-The code should also be analysed if sensitive data is used properly and securely:
+Obtaining the key is trivial because it is contained in the source code and identical for all installations of the app. Encrypting data this way is not beneficial. Look for hard-coded API keys/private keys and other valuable data; they pose a similar risk. Encoded/encrypted keys represent another attempt to make it harder but not impossible to get the crown jewels.
 
-* Sensitive information should not be stored for too long in the RAM (see also [OMTG-DATAST-011 - Testing for Sensitive Data Disclosure in Process Memory](#OMTG-DATAST-011)).
-* Set variables that use sensitive information to null once finished.
-* Use immutable objects for sensitive data so it cannot be changed.
+Consider the following code:
 
+```Java
+//A more complicated effort to store the XOR'ed halves of a key (instead of the key itself)
+private static final String[] myCompositeKey = new String[]{
+  "oNQavjbaNNSgEqoCkT9Em4imeQQ=","3o8eFOX4ri/F8fgHgiy/BS47"
+};
+```
+
+The algorithm for decoding the original key might be something like this:
+
+```Java
+public void useXorStringHiding(String myHiddenMessage) {
+  byte[] xorParts0 = Base64.decode(myCompositeKey[0],0);
+  byte[] xorParts1 = Base64.decode(myCompositeKey[1],0);
+
+  byte[] xorKey = new byte[xorParts0.length];
+  for(int i = 0; i < xorParts1.length; i++){
+    xorKey[i] = (byte) (xorParts0[i] ^ xorParts1[i]);
+  }
+  HidingUtil.doHiding(myHiddenMessage.getBytes(), xorKey, false);
+}
+```
+
+Verify common locations of secrets:
+- resources (typically at res/values/strings.xml)
+
+Example:
+```xml
+<resources>
+    <string name="app_name">SuperApp</string>
+    <string name="hello_world">Hello world!</string>
+    <string name="action_settings">Settings</string>
+    <string name="secret_key">My_Secret_Key</string>
+  </resources>
+```
+
+- build configs, such as in local.properties or gradle.properties
+
+Example:
+```
+buildTypes {
+  debug {
+    minifyEnabled true
+    buildConfigField "String", "hiddenPassword", "\"${hiddenPassword}\""
+  }
+}
+```
+
+##### KeyStore
+
+The [Android KeyStore](http://www.androidauthority.com/use-android-keystore-store-passwords-sensitive-information-623779/ "Use Android KeyStore") supports relatively secure credential storage. As of Android 4.3, it provides public APIs for storing and using app-private keys. An app can use a public key to create a new private/public key pair for encrypting application secrets, and it can decrypt the secrets with the private key.
+
+You can protect keys stored in the Android KeyStore with user authentication. The user's lock screen credentials (pattern, PIN, password, or fingerprint) are used for authentication.
+
+You can use stored keys in one of two modes:
+
+1. Users are authorized to use keys for a limited period of time after authentication. In this mode, all keys can be used as soon as the user unlocks the device. You can customize the period of authorization for each key. You can use this option only if the secure lock screen is enabled. If the user disables the secure lock screen, all stored keys will become permanently invalid.
+
+2. Users are authorized to use a specific cryptographic operation that is associated with one key. In this mode, users must request a separate authorization for each operation that involves the key. Currently, fingerprint authentication is the only way to request such authorization.
+
+The level of security afforded by the Android KeyStore depends on its implementation, which depends on the device. Most modern devices offer a hardware-backed KeyStore implementation: keys are generated and used in a Trusted Execution Environment (TEE) or a Secure Element (SE), and the operating system can't access them directly. This means that the encryption keys themselves can't be easily retrieved, even from a rooted device. You can determine whether the keys are inside the secure hardware by checking the return value of the `isInsideSecureHardware` method, which is part of the [`KeyInfo` class](https://developer.android.com/reference/android/security/keystore/KeyInfo.html "Class KeyInfo"). Note that the relevant KeyInfo indicates that secret keys and HMAC keys are insecurely stored on several devices despite private keys being correctly stored on the secure hardware.
+
+The keys of a software-only implementation are encrypted with a [per-user encryption master key](https://nelenkov.blogspot.sg/2013/08/credential-storage-enhancements-android-43.html "Nikolay Elenvok - Credential storage enhancements in Android 4.3"). An attacker can access all keys stored on rooted devices that have this implementation in the folder `/data/misc/keystore/`. Because the user's lock screen pin/password is used to generate the master key, the Android KeyStore is unavailable when the device is locked.
+
+##### Older KeyStore Implementations
+
+Older Android versions don't include KeyStore, but they *do* include the KeyStore interface from JCA (Java Cryptography Architecture). You can use KeyStores that implement this interface to ensure the secrecy and integrity of keys stored with KeyStore; BouncyCastle KeyStore (BKS) is recommended. All implementations are based on the fact that files are stored on the filesystem; all files are password-protected.
+To create one, you can use the `KeyStore.getInstance("BKS", "BC") method`, where "BKS" is the KeyStore name (BouncyCastle Keystore) and "BC" is the provider (BouncyCastle). You can also use SpongyCastle as a wrapper and initialize the KeyStore as follows: `KeyStore.getInstance("BKS", "SC")`.
+
+Be aware that not all KeyStores properly protect the keys stored in the KeyStore files.
+
+##### KeyChain
+
+The [KeyChain class](http://developer.android.com/reference/android/security/KeyChain.html "Android KeyChain") is used to store and retrieve *system-wide* private keys and their corresponding certificates (chain). The user will be prompted to set a lock screen pin or password to protect the credential storage if something is being imported into the KeyChain for the first time. Note that the KeyChain is system-wide—every application can access the materials stored in the KeyChain.
+
+Inspect the source code to determine whether native Android mechanisms identify sensitive information. Sensitive information should be encrypted, not stored in clear text. For sensitive information that must be stored on the device, several API calls are available to protect the data via the `KeyChain` class. Complete the following steps:
+
+- Make sure that the app is using the Android KeyStore and Cipher mechanisms to securely store encrypted information on the device. Look for the patterns `import java.security.KeyStore`, `import javax.crypto.Cipher`, `import java.security.SecureRandom`, and corresponding usages.
+- Use the `store(OutputStream stream, char[] password)` function to store the KeyStore to disk with a password. Make sure that the password is provided by the user, not hard-coded.
 
 #### Dynamic Analysis
 
-Install and use the App as it is intended and execute all functions at least once. Afterwards check the following items:
+Install and use the app, executing all functions at least once. Data can be generated when entered by the user, sent by the endpoint, or shipped with the app. Then complete the following:
 
-* Check the files that are shipped with the mobile application once installed in /data/data/<AppName>/files in order to identify development, backup or simply old files that shouldn’t be in a production release.
-* Check if .db files are available, which are SQLite databases and if they contain sensitive information (usernames, passwords, keys etc.). SQLite databases are stored in /data/data/<AppName>/databases.
-* Check Shared Preferences that are stored as XML files in the shared_prefs directory of the App for sensitive information.
-* Check the file system permissions of the files in /data/data/<app name>. The permission should only allow **rwx** to the user and his group that was created for the app (e.g. u0_a82) but not to others. Others should have no permissions to files, but may have the executable flag to directories.
+- Identify development files, backup files, and old files that shouldn't be included with a production release.
+- Determine whether SQLite databases are available and whether they contain sensitive information. SQLite databases are stored in `/data/data/<package-name>/databases`.
+- Check Shared Preferences that are stored as XML files (in `/data/data/<package-name>/shared_prefs`) for sensitive information. Avoid using Shared Preferences and other mechanisms that can't protect data when you are storing sensitive information. Shared Preferences is insecure and unencrypted by default. You can use [recure-preferences](https://github.com/scottyab/secure-preferences "Secure-preferences encrypts the values of Shared Preferences") to encrypt the values stored in Shared Preferences, but the Android KeyStore should be your first choice for storing data securely.
+- Check the permissions of the files in `/data/data/<package-name>`. Only the user and group created when you installed the app (e.g., u0_a82) should have user read, write, and execute permissions (`rwx`). Other users should not have permission to access files, but they may have execute permissions for directories.
+- Determine whether a Realm database is available in `/data/data/<package-name>/files/`, whether it is unencrypted, and whether it contains sensitive information. By default, the file extension is `realm` and the file name is `default`. Inspect the Realm database with the [Realm Browser](https://github.com/realm/realm-browser-osx "Realm Browser for macOS").
+- Check external storage for data. Don't use external storage for sensitive data because it is readable and writeable system-wide.
 
-##### KeyChain and KeyStore
-
-When targeting Android applications, the best way to proceed is to first decompile them in order to obtain something close to the source code (_**see Decompiling Android App Guide - #TODO-Create a general guide that can bee referenced anywhere in the OMSTF**_). With the code in your hands you should then be able to inspect and verify if system credentials storage facilities are in place.
-
-#### Remediation
-
-If sensitive information (credentials, keys, PII, etc.) is needed locally on the device several best practices are offered by Android that should be used to store data securely instead of reinventing the wheel or leave it unencrypted on the device.
-
-The following is a list of best practice used for secure storage of certificates and keys and sensitive data in general:
-
-* [Android KeyStore][19149717]: The KeyStore provides a secure system level credential storage. It is important to note that the credentials are not actually stored within the KeyStore. An app can create a new private/public key pair to encrypt application secrets by using the public key and decrypt the same by using the private key. The KeyStore is a secure container that makes it difficult for an attacker to retrieve the private key and guards the encrypted data. Nevertheless an attacker can access all keys on a rooted device in the folder `/data/misc/keystore/`. The KeyStore is encrypted using the user’s own lockscreen pin/password, hence, when the device screen is locked the KeyStore is unavailable. More information can be found here: [how to use Android Keystore][0d4e8f69].
-* [Android KeyChain][707361af]: The KeyChain class is used to store and retrieve private keys and their corresponding certificate (chain). The user will be prompted to set a lock screen PIN or password to protect the credential storage if it hasn’t been set, if something gets imported into the KeyChain the first time.
-* Encryption or decryption functions that were self implemented need to be avoided. Instead use Android implementations such as [Cipher][8705d59b], [SecureRandom][c941abfc] and [KeyGenerator][fcc82125].   
-* Username and password should not be stored on the device. Instead, perform initial authentication using the username and password supplied by the user, and then use a short-lived, service-specific authorization token (session token). If possible, use the [AccountManager][ff4a4029] class to invoke a cloud-based service and do not store passwords on the device.
-* As a security in depth measure code obfuscation should also be applied to the App, to make reverse engineering harder for attackers.
-* Usage of `MODE_WORLD_WRITEABLE` or `MODE_WORLD_READABLE` should generally be avoided for files. If data needs to be shared with other applications, a content provider should be considered. A content provider offers read and write permissions to other apps and can make dynamic permission grants on a case-by-case basis.
-* The usage of Shared Preferences or other mechanisms that are not able to protect data should be avoided to store sensitive information. SharedPreferences are insecure and not encrypted by default. [“Secure-preferences][6dea1401]” can be used to encrypt the values stored within [Shared Preferences][afd8258f].
-* Do not use the external storage for sensitive data. By default, files saved to the internal storage are private to your application and other applications cannot access them (nor can the user). When the user uninstalls your application, these files are removed.
-* To provide additional protection for sensitive data, you might choose to encrypt local files using a key that is not directly accessible to the application. For example, a key can be placed in a [KeyStore][19149717] and protected with a user password that is not stored on the device. While this does not protect data from a root compromise that can monitor the user inputting the password, it can provide protection for a lost device without file system encryption.
+Files saved to internal storage are by default private to your application; neither the user nor other applications can access them. When users uninstall your application, these files are removed.
 
 
-#### References
-
-* [How to use the Android Keystore to store passwords and other sensitive information][0d4e8f69]
-* [Android KeyChain][707361af]
-* [Android KeyStore][19149717]
-
-##### OWASP MASVS
-
-- V2.1: "System credential storage facilities are used appropriately to store sensitive data, such as user credentials or cryptographic keys."
-
-##### OWASP Mobile Top 10
-* M1 - Improper Platform Usage
-* M2 - Insecure Data Storage
-
-##### CWE
-* CWE-311 - Missing Encryption of Sensitive Data
-* CWE-312 - Cleartext Storage of Sensitive Information
-* CWE-522 - Insufficiently Protected Credentials
-* CWE-922 - Insecure Storage of Sensitive Information
-
-##### Info
-
-* [Internal Storage][e65ea363]
-* [External Storage][5e4c3059]
-* [Storing Data][fb530e1c]
-* [Shared Preferences][afd8258f]
-* [SQLCipher][7e90d2dc]
-* [SecurePreferences][6dea1401]
-* [Android Keystore][19149717]
-* [Android Storage Documentation][1e23894b]
-
-##### Tools
-* [Enjarify][be9ea354]
-* [JADX][b54750a7]
-* [Dex2jar][3d1bb980]
-* [Lint][a9965341]
-* [SQLite3][3b9b0b6f]
-
-
-### Testing for Sensitive Data in Logs
+### Testing Logs for Sensitive Data
 
 #### Overview
 
-There are many legit reasons to create log files on a mobile device, for example to keep track of crashes or errors that are stored locally when being offline and being sent to the application developer/company once online again or for usage statistics. However, logging sensitive data such as credit card number and session IDs might expose the data to attackers or malicious applications.
-Log files can be created in various ways on each of the different operating systems. The following list shows the mechanisms that are available on Android:
+There are many legitimate reasons to create log files on a mobile device, such as keeping track of crashes, errors, and usage statistics. Log files can be stored locally when the app is offline and sent to the endpoint once the app is online. However, logging sensitive data may expose the data to attackers or malicious applications, and it violates user confidentiality.
+You can create log files in several ways. The following list includes two classes that are available for Android:
 
-* Log Class, .log[a-Z]
-* Logger Class        
-* StrictMode  
-* System.out/System.err.print
+- [Log Class](https://developer.android.com/reference/android/util/Log.html "Log Class")
+- [Logger Class](https://developer.android.com/reference/java/util/logging/Logger.html "Logger Class")
 
-Classification of sensitive information can vary between different industries, countries and their laws and regulations. Therefore laws and regulations need to be known that are applicable to it and to be aware of what sensitive information actually is in the context of the App.
+Use a centralized logging class and mechanism and remove logging statements from the production release because other applications may be able to read them.
 
 #### Static Analysis
 
-Check the source code for usage of Logging functions, by searching for the following terms:
+Check the app's source code for logging mechanisms by searching for the following keywords:
 
-1. Functions and classes like:
-  * `Log.d`, `Log.e`, `Log.i`, `Log.v`, `Log.w` and `Log.wtf`
+- Functions and classes, such as:
+  * `android.util.Log`
+  * `Log.d` | `Log.e` | `Log.i` | `Log.v` | `Log.w` | `Log.wtf`
   * `Logger`
-  * `StrictMode`
 
-2. Keywords and system output to identify non-standard log mechanisms like :
+- Keywords and system output:
+  * `System.out.print` | `System.err.print`
   * logfile
   * logging
   * logs
-  * `System.out.print` | `System.out.println`
 
-#### Dynamic Analysis
-
-Use the mobile app extensively so that all functionality is at least triggered once.
-
-1. Identify the data directory of the application in order to look for log files (`/data/data/package_name`). Check if log data is generated by checking the application logs, as some mobile applications create and store their own logs in the data directory.  
-2. Many application developers use still `System.out.println()` or `printStackTrace()` instead of a proper logging class. Therefore the testing approach also needs to cover all output generated by the application during starting, running and closing of it and not only the output created by the log classes. In order to verify what data is written to logfiles and printed directly by using `System.out.println()` or `printStackTrace()` the code should be checked for these functions and the tool [_LogCat_][99e277eb] can be used to check the output. Two different approaches are available to execute LogCat.
-  * LogCat is already part of _Dalvik Debug Monitor Server_ (DDMS) and is built into Android Studio. If the app is in debug mode and running, the log output is shown in the Android Monitor in the LogCat tab. Patterns can be defined in LogCat to filter the log output of the app.
-
-![Log output in Android Studio](Images/Chapters/0x05d/log_output_Android_Studio.png)
-
-  * LogCat can be executed by using adb in order to store the log output permanently.
-
-```bash
-# adb logcat > logcat.log
-```
-
-#### Remediation
-
-Ensure logging statements are removed from the production release, as logs may be interrogated or readable by other applications. Tools like **[ProGuard][45476f61]**, which is already included in Android Studio or **[DexGuard][7bd6e70d]** can be used to strip out logging portions in the code when preparing the production release. For example, to remove logging calls within an Android application, simply add the following option in the _proguard-project.txt_ configuration file of ProGuard:
+While preparing the production release, you can use tools like `ProGuard` (included in Android Studio) to delete logging-related code. To determine whether all the `android.util.Log` class' logging functions have been removed, check the ProGuard configuration file (_proguard-project.txt_) for the following options:
 
 ```java
 -assumenosideeffects class android.util.Log
 {
-public static boolean isLoggable(java.lang.String, int);
-public static int v(...);
-public static int i(...);
-public static int w(...);
-public static int d(...);
-public static int e(...);
-public static int wtf(...);
+  public static boolean isLoggable(java.lang.String, int);
+  public static int v(...);
+  public static int i(...);
+  public static int w(...);
+  public static int d(...);
+  public static int e(...);
+  public static int wtf(...);
 }
 ```
 
-#### References
+Note that the example above only ensures that calls to the Log class' methods will be removed. If the string that will be logged is dynamically constructed, the code that constructs the string may remain in the bytecode. For example, the following code issues an implicit `StringBuilder` to construct the log statement:
 
-##### Info
-* [Overview of Class Log][de2ec1fd]
-* [Debugging Logs with LogCat][7f106169]
+```java
+Log.v("Private key [byte format]: " + key);
+```
 
-##### Tools
-* [LogCat][99e277eb]
-* [ProGuard][45476f61]
-* [DexGuard][7bd6e70d]
-* [ClassyShark][c83d7c35]
+The compiled bytecode, however, is equivalent to the bytecode of the following log statement, which constructs the string explicitly:
 
-##### OWASP MASVS
+```java
+Log.v(new StringBuilder("Private key [byte format]: ").append(key.toString()).toString());
+```
 
-- V2.2: "No sensitive data is written to application logs."
+ProGuard guarantees removal of the `Log.v` method call. Whether the rest of the code (`new StringBuilder ...`) will be removed depends on the complexity of the code and the [ProGuard version](https://stackoverflow.com/questions/6009078/removing-unused-strings-during-proguard-optimisation "Removing unused strings during ProGuard optimization ").
 
-##### OWASP Mobile Top 10
-* M1 - Improper Platform Usage
-* M2 - Insecure Data Storage
+This is a security risk because the (unused) string leaks plain text data into memory, which can be accessed via a debugger or memory dumping.
 
-##### CWE
-* CWE-117: Improper Output Neutralization for Logs
-* CWE-532: Information Exposure Through Log Files
-* CWE-534: Information Exposure Through Debug Log Files
+Unfortunately, no silver bullet exists for this issue, but a few options are available:
 
+- Implement a custom logging facility that takes simple arguments and constructs the log statements internally.
+```java
+SecureLog.v("Private key [byte format]: ", key);
+```
+Then configure ProGuard to strip its calls.
 
+- Remove logs at the source level instead of at the compiled bytecode level. Below is a simple Gradle task that comments out all log statements, including any inline string builders:
 
-### Testing Whether Sensitive Data is Sent to Third Parties
+```
+afterEvaluate {
+    project.getTasks().findAll { task -> task.name.contains("compile") && task.name.contains("Release")}.each { task ->
+      task.dependsOn('removeLogs')
+}
 
-#### Overview
+  task removeLogs() {
+    doLast {
+      fileTree(dir: project.file('src')).each { File file ->
+        def out = file.getText("UTF-8").replaceAll("((android\\.util\\.)*Log\\.([ewidv]|wtf)\\s*\\([\\S\\s]*?\\)\\s*;)", "/*\$1*/")
+        file.write(out);
+    }
+  }
+}
+```
 
-Different 3rd party services are available that can be embedded into the App to implement different features. This features can vary from tracker services to monitor the user behaviour within the App, selling banner advertisements or to create a better user experience. Interacting with these services abstracts the complexity and neediness to implement the functionality on it’s own and to reinvent the wheel.
-The downside is that a developer doesn’t know in detail what code is executed via 3rd party libraries and therefore giving up visibility. Consequently it should be ensured that not more information as needed is sent to the service and that no sensitive information is disclosed.
-
-3rd party services are mostly implemented in two ways:
-* By using a standalone library, like a Jar in an Android project that is getting included into the APK.
-* By using a full SDK.
-
-#### Static Analysis
-
-Some 3rd party libraries can be automatically integrated into the App through a wizard within the IDE. The permissions set in the `AnroidManifest.xml`  when installing a library through an IDE wizard should be reviewed. Especially permissions to access `SMS (READ_SMS)`, contacts (`READ_CONTACTS`) or the location (`ACCESS_FINE_LOCATION`) should be challenged if they are really needed to make the library work at a bare minimum, see also **OMTG-ENV-XXX**. When talking to developers it should be shared to them that it’s actually necessary to have a look at the diff on the project source code before and after the library was installed through the IDE and what changes have been made to the code base.
-
-The same thing applies when adding a library or SDK manually. The source code should be checked for API calls or functions provided by the 3rd party library or SDK. The applied code changes should be reviewed and it should be checked if available security best practices of the library and SDK are applied and used.
-
-The libraries loaded into the project should be reviewed in order to identify with the developers if they are needed and also if they are out of date and contain known vulnerabilities.
 
 #### Dynamic Analysis
 
-All requests made to the external service should be analyzed if any sensitive information is embedded into them.
-* Dynamic analysis can be performed by launching a Man-in-the-middle (MITM) attack using _Burp Proxy_ or OWASP ZAP, to intercept the traffic exchanged between client and server. A complete guide can be found [here][05773baa]. Once we are able to route the traffic to the interception proxy, we can try to sniff the traffic from the App. When using the App all requests that are not going directly to the server where the main function is hosted should be checked, if any sensitive information is sent to a 3rd party. This could be for example PII in a tracker or ad service.
-* When decompiling the App, API calls and/or functions provided through the 3rd party library should be reviewed on a source code level to identify if they are used accordingly to best practices.
+Use all the mobile app functions at least once, then identify the application's data directory and look for log files (`/data/data/<package-name>`). Check the application logs to determine whether log data has been generated; some mobile applications create and store their own logs in the data directory.  
 
-#### Remediation
+Many application developers still use `System.out.println` or `printStackTrace` instead of a proper logging class. Therefore, your testing strategy must include all output generated while the application is starting, running and closing. To determine what data is directly printed by `System.out.println` or `printStackTrace`, you can use [`Logcat`](http://developer.android.com/tools/debugging/debugging-log.html "Debugging with Logcat"). There are two ways to execute Logcat:
 
-All data that is sent to 3rd Party services should be anonymized, so no PII data is available. Also all other data, like IDs in an application that can be mapped to a user account or session should not be sent to a third party.  
-`AndroidManifest.xml` should only contain the permissions that are absolutely needed to work properly and as intended.
+- Logcat is part of _Dalvik Debug Monitor Server_ (DDMS) and Android Studio. If the app is running in debug mode, the log output will be shown in the Android Monitor on the Logcat tab. You can filter the app's log output by defining patterns in Logcat.
 
-#### References
+![Log output in Android Studio](Images/Chapters/0x05d/log_output_Android_Studio.png)
 
-* [Bulletproof Android, Godfrey Nolan][9b6055db]: Chapter 7 - Third-Party Library Integration
+- You can execute Logcat with adb to store the log output permanently:
 
-[9b6055db]: https://www.amazon.com/Bulletproof-Android-Practical-Building-Developers/dp/0133993329 "Book_BulletproofAndroid"
-[05773baa]: https://support.portswigger.net/customer/portal/articles/1841101-configuring-an-android-device-to-work-with-burp "ConfigureAndroidBurp"
-
-##### OWASP MASVS
-
-- V2.3: "No sensitive data is shared with third parties unless it is a necessary part of the architecture."
-
-##### OWASP Mobile Top 10
-* M1 - Improper Platform Usage
-* M2 - Insecure Data Storage
-
-##### CWE
-- CWE-359 "Exposure of Private Information ('Privacy Violation')": [Link to CWE issue]
+```bash
+$ adb logcat > logcat.log
+```
 
 
-### Testing Whether the Keyboard Cache Is Disabled for Text Input Fields
+### Determining Whether Sensitive Data is Sent to Third Parties
 
 #### Overview
 
-When keying in data into input fields, the software keyboard automatically suggests what data the user might want to key in. This feature can be very useful in messaging Apps to write text messages more efficient. For input fields that are asking for sensitive information like passwords or credit card data the keyboard cache might disclose sensitive information already when the input field is selected. This feature should therefore be disabled for input fields that are asking for sensitive information.
+You can embed third-party services in apps. These services can implement tracker services, monitor user behavior, sell banner advertisements, improve the user experience, and more.
+
+The downside is a lack of visibility: you can't know exactly what code third-party libraries execute. Consequently, you should make sure that only necessary, non-sensitive information will be sent to the service.
+
+Most third-party services are implemented in one of two ways:
+- With a standalone library, such as an Android project Jar that is included in the APK
+- With a full SDK
 
 #### Static Analysis
 
-In the layout definition of an activity, TextViews can be defined that have XML attributes. When the XML attribute android:inputType is set with the constant "textNoSuggestions" the keyboard cache is not shown if the input field is selected. Only the keyboard is shown and the user needs to type everything manually and nothing is suggested to him.
+You can automatically integrate third-party libraries into apps by using an IDE wizard or manually adding a library or SDK. In either case, review the permissions in the `AndroidManifest.xml`. In particular, you should determine whether permissions for accessing `SMS (READ_SMS)`, contacts (`READ_CONTACTS`), and location (`ACCESS_FINE_LOCATION`) are really necessary (see `Testing App Permissions`). Developers should check the source code for changes after the library has been added to the project.
+
+Check the source code for API calls and third-party library functions or SDKs. Review code changes for security best practices.
+
+Review loaded libraries to determine whether they are necessary and whether they are out of date or contain known vulnerabilities.
+
+All data sent to third-party services should be anonymized. Data (such as application IDs) that can be traced to a user account or session should not be sent to a third party.  
+
+#### Dynamic Analysis
+
+Check all requests to external services for embedded sensitive information.
+To intercept traffic between the client and server, you can perform dynamic analysis by launching a man-in-the-middle (MITM) attack with _Burp Suite Professional_ or _OWASP ZAP_. Once you route the traffic through the interception proxy, you can try to sniff the traffic that passes between the app and server. All app requests that aren't sent directly to the server on which the main function is hosted should be checked for sensitive information, such as PII in a tracker or ad service.
+
+
+### Determining Whether the Keyboard Cache Is Disabled for Text Input Fields
+
+#### Overview
+
+When users type in input fields, the software automatically suggests data. This feature can be very useful for messaging apps. Hovewer, the keyboard cache may disclose sensitive information when the user selects an input field that takes this type of information.
+
+#### Static Analysis
+
+In the layout definition of an activity, you can define `TextViews` that have XML attributes. If the XML attribute `android:inputType` is given the value `textNoSuggestions`, the keyboard cache will not be shown when the input field is selected. The user will have to type everything manually.
 
 ```xml
    <EditText
@@ -404,56 +430,23 @@ In the layout definition of an activity, TextViews can be defined that have XML 
         android:inputType="textNoSuggestions"/>
 ```
 
+The code for all input fields that take sensitive information should include this XML attribute to [disable the keyboard suggestions](https://developer.android.com/reference/android/text/InputType.html#TYPE_TEXT_FLAG_NO_SUGGESTIONS "Disable keyboard suggestions"):
+
 
 #### Dynamic Analysis
 
-Start the app and click into the input fields that ask for sensitive data. If strings are suggested the keyboard cache is not disabled for this input field.
-
-#### Remediation
-
-All input fields that ask for sensitive information, should implement the following XML attribute to disable the keyboard suggestions:
-
-```xml
-android:inputType="textNoSuggestions"
-```
-
-#### References
-
-- https://developer.android.com/reference/android/text/InputType.html#TYPE_TEXT_FLAG_NO_SUGGESTIONS
-
-##### OWASP MASVS
-
-- V2.4: "The keyboard cache is disabled on text inputs that process sensitive data."
-
-##### OWASP Mobile Top 10
-* M1 - Improper Platform Usage
-* M2 - Insecure Data Storage
-
-##### CWE
-- CWE-524: Information Exposure Through Caching
+Start the app and click in the input fields that take sensitive data. If strings are suggested, the keyboard cache has not been disabled for these fields.
 
 
-
-### Testing for Sensitive Data in the Clipboard
+### Finding Sensitive Data on the Clipboard
 
 #### Overview
 
-(... TODO ...)
-
+While users are typing data in input fields, they can use the [clipboard](https://developer.android.com/guide/topics/text/copy-paste.html "Copy and Paste in Android") to copy and paste data. The device's apps share the clipboard, so malicious apps can misuse it to access sensitive data.
 
 #### Static Analysis
 
-Input fields that are asking for sensitive information need to be identified and afterwards be investigated if any countermeasures are in place to mitigate the clipboard of showing up. See the remediation section for code snippets that could be applied.
-
-#### Dynamic Analysis
-
-Start the app and click into the input fields that ask for sensitive data. When it's possible to get the menu to copy/paste data the functionality is not disabled for this input field.
-
-#### Remediation
-
-Many major versions of the Android operating system are still actively used and are outta there. On top of that several mobile phone manufactures are implementing their own user interface extensions and functions to their Android fork. Because of this it might be difficult to deactivate the clipboard completely on every single Android device.
-
-A general best practice is overwriting different functions in the input field to disable the clipboard specifically for it.
+Identify input fields that take sensitive information and countermeasures that mitigate the risk of clipboard access. Overwriting input field functions is a general best practice that disables the clipboard for those functions.
 
 ```Java
 EditText  etxt = (EditText) findViewById(R.id.editText1);
@@ -476,128 +469,234 @@ etxt.setCustomSelectionActionModeCallback(new Callback() {
         });
 ```
 
-Also `longclickable` should be deactivated for this input field.
+`longClickable` should be deactivated for the input field.
 
 ```xml
 android:longClickable="false"
 ```
 
-#### References
+#### Dynamic Analysis
 
-- https://developer.android.com/guide/topics/text/copy-paste.html
+Start the app and click in the input fields that take sensitive data. If you are shown the copy/paste menu, the clipboard functionality has not been disabled for these fields.
 
-##### OWASP MASVS
+You can use the Drozer module `post.capture.clipboard` to extract data from the clipboard:
 
-- V2.5: "The clipboard is deactivated on text fields that may contain sensitive data."
+```
+dz> run post.capture.clipboard
+[*] Clipboard value: ClipData.Item { T:Secretmessage }
+```
 
-##### OWASP Mobile Top 10
-* M1 - Improper Platform Usage
-* M2 - Insecure Data Storage
-
-##### CWE
-- CWE: [Link to CWE issue]
-
-
-### Testing Whether Sensitive Data Is Exposed via IPC Mechanisms
+### Determining Whether Sensitive Stored Data Has Been Exposed via IPC Mechanisms
 
 #### Overview
 
-During development of mobile application, traditional techniques for IPC might be applied like usage of shared files or network sockets. As mobile application platforms implement their own system functionality for IPC these mechanisms should be applied as they are much more mature than traditional techniques. Using IPC mechanisms with no security in mind may cause the application to leak or expose sensitive data.
-
-The following is a list of Android IPC Mechanisms that may expose sensitive data:
-* [Binders][0c656fa2]
-* [Services][d97f5ea9]
-  * [Bound Services][5a7bc786]
-  * [AIDL][8c349a63]
-* [Intents][a28d43d1]
-* [ContentProviders][6a30e426]
+As part of Android's IPC mechanisms, content providers allow an app's stored data to be accessed and modified by other apps. If not properly configured, these mechanisms may leak sensitive data.
 
 #### Static Analysis
 
-The first step is to look into the `AndroidManifest.xml` in order to detect and identify IPC mechanisms exposed by the App. You will want to identify elements such as:
+The first step is to look at `AndroidManifest.xml` to detect content providers exposed by the app. You can identify content providers by the `<provider>` element. Complete the following steps:
 
-* `<intent-filter>`: more [here][aa2cf4d9]
-* `<service>`: more [here][56866a0a]
-* `<provider>`: more [here][466ff32c]
-* `<receiver>`: more [here][988bd8a2]
+- Determine whether the value of the export tag is "true" (`android:exported="true"`). Even if it is not, the tag will be set to "true" automatically if an `<intent-filter>` has been defined for the tag. If the content is meant to be accessed only by the app itself, set `android:exported` to "false." If not, set the flag to "true" and define proper read/write permissions.
+-  Determine whether the data is being protected by a permission tag (`android:permission`). Permission tags limit exposure to other apps.
+- Determine whether the `android:protectionLevel` attribute has the value `signature`. This setting indicates that the data is intended to be accessed only by apps from the same enterprise (i.e., signed with the same key). To make the data accessible to other apps, apply a security policy with the `<permission>` element and set a proper `android:protectionLevel`. If you use `android:permission`, other applications must declare corresponding `<uses-permission>` elements in their manifests to interact with your content provider. You can use the `android:grantUriPermissions` attribute to grant more specific access to other apps; you can limit access with the `<grant-uri-permission>` element.
 
-Except for the `<intent-filter>` element, check if the the previous elements contain the following attributes:
-* `android:exported`
-* `android:permission`
+Inspect the source code to understand how the content provider is meant to be used. Search for the following keywords:
+- `android.content.ContentProvider`
+- `android.database.Cursor`
+- `android.database.sqlite`
+- `.query`
+- `.update`
+- `.delete`
 
-Once you identify a list of IPC mechanisms, review the source code in order to detect if they leak any sensitive data when used. For example, _ContentProviders_ can be used to access database information, while services can be probed to see if they return data. Also BroadcastReceiver and Broadcast intents can leak sensitive information if probed or sniffed.
+> To avoid SQL injection attacks within the app, use parameterized query methods, such as `query`, `update`, and `delete`. Be sure to properly sanitize all method arguments; for example, the `selection` argument could lead to SQL injection if it is made up of concatenated user input.
 
-* Vulnerable ContentProvider
+ If you expose a content provider, determine whether parameterized [query methods](https://developer.android.com/reference/android/content/ContentProvider.html#query%28android.net.Uri%2C%20java.lang.String[]%2C%20java.lang.String%2C%20java.lang.String[]%2C%20java.lang.String%29 "Query method in Content Provider Class") (`query`, `update`, and `delete`) are being used to prevent SQL injection. If so, make sure all their arguments are properly sanitized.
 
-An example of vulnerable _ContentProvider_ (and SQL injection **#TODO: refere any input validation test in the project**)
+We will use the vulnerable password manager app [Sieve](https://github.com/mwrlabs/drozer/releases/download/2.3.4/sieve.apk "Sieve - Vulnerable Password Manager") as an example of a vulnerable content provider.
 
-* `AndroidManifest.xml`
+##### Inspect the Android Manifest
+Identify all defined `<provider>` elements:
 
 ```xml
-<provider android:name=".CredentialProvider"
-          android:authorities="com.owaspomtg.vulnapp.provider.CredentialProvider"
-          android:exported="true">
+<provider android:authorities="com.mwr.example.sieve.DBContentProvider" android:exported="true" android:multiprocess="true" android:name=".DBContentProvider">
+    <path-permission android:path="/Keys" android:readPermission="com.mwr.example.sieve.READ_KEYS" android:writePermission="com.mwr.example.sieve.WRITE_KEYS"/>
 </provider>
+<provider android:authorities="com.mwr.example.sieve.FileBackupProvider" android:exported="true" android:multiprocess="true" android:name=".FileBackupProvider"/>
 ```
-The application exposes the content provider. In the `CredentialProvider.java` file we have to inspect the `query` function to detect if any sensitive information will be leaked:
+
+As shown in the `AndroidManifest.xml` above, the application exports two content providers. Note that one path ("/Keys") is protected by read and write permissions.
+
+##### Inspect the source code
+Inspect the `query` function in the `DBContentProvider.java` file to determine whether any sensitive information is being leaked:
 
 ```java
-public Cursor query(Uri uri, String[] projection, String selection,
-			String[] selectionArgs, String sortOrder) {
-		 SQLiteQueryBuilder queryBuilder = new SQLiteQueryBuilder();
-		 // the TABLE_NAME to query on
-		 queryBuilder.setTables(TABLE_NAME);
-	      switch (uriMatcher.match(uri)) {
-	      // maps all database column names
-	      case CREDENTIALS:
-	    	  queryBuilder.setProjectionMap(CredMap);
-	         break;
-	      case CREDENTIALS_ID:
-	    	  queryBuilder.appendWhere( ID + "=" + uri.getLastPathSegment());
-	         break;
-	      default:
-	         throw new IllegalArgumentException("Unknown URI " + uri);
-	      }
-	      if (sortOrder == null || sortOrder == ""){
-	         sortOrder = USERNAME;
-	      }
-	     Cursor cursor = queryBuilder.query(database, projection, selection,
-	    		  selectionArgs, null, null, sortOrder);
-	      cursor.setNotificationUri(getContext().getContentResolver(), uri);
-	      return cursor;
-	}
+public Cursor query(final Uri uri, final String[] array, final String s, final String[] array2, final String s2) {
+    final int match = this.sUriMatcher.match(uri);
+    final SQLiteQueryBuilder sqLiteQueryBuilder = new SQLiteQueryBuilder();
+    if (match >= 100 && match < 200) {
+        sqLiteQueryBuilder.setTables("Passwords");
+    }
+    else if (match >= 200) {
+        sqLiteQueryBuilder.setTables("Key");
+    }
+    return sqLiteQueryBuilder.query(this.pwdb.getReadableDatabase(), array, s, array2, (String)null, (String)null, s2);
+}
 ```
-* Vulnerable Broadcast
-Search in the source code for strings like `sendBroadcast`, `sendOrderedBroadcast`, `sendStickyBroadcast` and verify that the application doesn't send any sensitive data.
 
-An example of a vulnerable broadcast is the following:
+Here we see that there are actually two paths, "/Keys" and "/Passwords", and the latter is not being protected in the manifest and is therefore vulnerable.
 
-```java
-private void vulnerableBroadcastFunction() {
-    // ...
-    Intent VulnIntent = new Intent();
-    VulnIntent.setAction("com.owasp.omtg.receiveInfo");
-    VulnIntent.putExtra("ApplicationSession", "SESSIONID=A4EBFB8366004B3369044EE985617DF9");
-    VulnIntent.putExtra("Username", "litnsarf_omtg");
-    VulnIntent.putExtra("Group", "admin");
-  }
-  this.sendBroadcast(VulnIntent);
-```
+ When accessing a URI, the query statement returns all passwords and the path `Passwords/`. We will address this in the "Dynamic Analysis" section and show the exact URI that is required.
+
 
 #### Dynamic Analysis
 
-Similar to the White-box testing, you should decompile the application (if possible) and create a list of IPC mechanisms implemented by going through the AndroidManifest.xml. Once you have the list, prove each IPC via ADB or custom applications to see if they leak any sensitive information.
+##### Testing Content Providers
 
-* Vulnerable ContentProvider
+To dynamically analyze an application's content providers, first enumerate the attack surface: pass the app's package name to the Drozer module `app.provider.info`:
 
-In the case of the previous content provider, we can probe the content provider via ADB, but we need to know the correct URI. Once the APK has been decompiled, use the commands `strings` and `grep` to identify the correct URI to use:
-
-```bash
-$ strings classes.dex | grep "content://"
-com.owaspomtg.vulnapp.provider.CredentialProvider/credentials
+```
+dz> run app.provider.info -a com.mwr.example.sieve
+  Package: com.mwr.example.sieve
+  Authority: com.mwr.example.sieve.DBContentProvider
+  Read Permission: null
+  Write Permission: null
+  Content Provider: com.mwr.example.sieve.DBContentProvider
+  Multiprocess Allowed: True
+  Grant Uri Permissions: False
+  Path Permissions:
+  Path: /Keys
+  Type: PATTERN_LITERAL
+  Read Permission: com.mwr.example.sieve.READ_KEYS
+  Write Permission: com.mwr.example.sieve.WRITE_KEYS
+  Authority: com.mwr.example.sieve.FileBackupProvider
+  Read Permission: null
+  Write Permission: null
+  Content Provider: com.mwr.example.sieve.FileBackupProvider
+  Multiprocess Allowed: True
+  Grant Uri Permissions: False
 ```
 
-Now you can probe the content provider via `adb` with the following command:
+In this example, two content providers are exported. Both can be accessed without permission, except for the `/Keys` path in the `DBContentProvider`. With this information, you can reconstruct part of the content URIs to access the `DBContentProvider` (the URIs begin with `content://`).
+
+To identify content provider URIs within the application, use Drozer's `scanner.provider.finduris` module. This module guesses paths and determines accessible content URIs in several ways:
+
+```
+dz> run scanner.provider.finduris -a com.mwr.example.sieve
+Scanning com.mwr.example.sieve...
+Unable to Query content://com.mwr.example.sieve.DBContentProvider/
+...
+Unable to Query content://com.mwr.example.sieve.DBContentProvider/Keys
+Accessible content URIs:
+content://com.mwr.example.sieve.DBContentProvider/Keys/
+content://com.mwr.example.sieve.DBContentProvider/Passwords
+content://com.mwr.example.sieve.DBContentProvider/Passwords/
+```
+
+Once you have a list of accessible content providers, try to extract data from each provider with the `app.provider.query` module:
+
+```
+dz> run app.provider.query content://com.mwr.example.sieve.DBContentProvider/Passwords/ --vertical
+_id: 1
+service: Email
+username: incognitoguy50
+password: PSFjqXIMVa5NJFudgDuuLVgJYFD+8w== (Base64 - encoded)
+email: incognitoguy50@gmail.com
+```
+
+You can also use Drozer to insert, update, and delete records from a vulnerable content provider:
+
+- Insert record
+
+```
+dz> run app.provider.insert content://com.vulnerable.im/messages
+                --string date 1331763850325
+                --string type 0
+                --integer _id 7
+```
+
+- Update record
+
+```
+dz> run app.provider.update content://settings/secure
+                --selection "name=?"
+                --selection-args assisted_gps_enabled
+                --integer value 0
+```
+
+- Delete record
+
+```
+dz> run app.provider.delete content://settings/secure
+                --selection "name=?"
+                --selection-args my_setting
+```
+
+##### SQL Injection in Content Providers
+
+The Android platform promotes SQLite databases for storing user data. Because these databases are based on SQL, they may be vulnerable to SQL injection. You can use the Drozer module `app.provider.query` to test for SQL injection by manipulating the projection and selection fields that are passed to the content provider:
+
+```
+dz> run app.provider.query content://com.mwr.example.sieve.DBContentProvider/Passwords/ --projection "'"
+unrecognized token: "' FROM Passwords" (code 1): , while compiling: SELECT ' FROM Passwords
+
+dz> run app.provider.query content://com.mwr.example.sieve.DBContentProvider/Passwords/ --selection "'"
+unrecognized token: "')" (code 1): , while compiling: SELECT * FROM Passwords WHERE (')
+```
+
+If an application is vulnerable to SQL Injection, it will return a verbose error message. SQL Injection on Android may be used to modify or query data from the vulnerable content provider. In the following example, the Drozer module `app.provider.query` is used to list all the database tables:
+
+```
+dz> run app.provider.query content://com.mwr.example.sieve.DBContentProvider/Passwords/ --projection "*
+FROM SQLITE_MASTER WHERE type='table';--"
+| type  | name             | tbl_name         | rootpage | sql              |
+| table | android_metadata | android_metadata | 3        | CREATE TABLE ... |
+| table | Passwords        | Passwords        | 4        | CREATE TABLE ... |
+| table | Key              | Key              | 5        | CREATE TABLE ... |
+```
+
+SQL Injection may also be used to retrieve data from otherwise protected tables:
+
+```
+dz> run app.provider.query content://com.mwr.example.sieve.DBContentProvider/Passwords/ --projection "* FROM Key;--"
+| Password | pin |
+| thisismypassword | 9876 |
+```
+
+You can automate these steps with the `scanner.provider.injection` module, which automatically finds vulnerable content providers within an app:
+
+```
+dz> run scanner.provider.injection -a com.mwr.example.sieve
+Scanning com.mwr.example.sieve...
+Injection in Projection:
+  content://com.mwr.example.sieve.DBContentProvider/Keys/
+  content://com.mwr.example.sieve.DBContentProvider/Passwords
+  content://com.mwr.example.sieve.DBContentProvider/Passwords/
+Injection in Selection:
+  content://com.mwr.example.sieve.DBContentProvider/Keys/
+  content://com.mwr.example.sieve.DBContentProvider/Passwords
+  content://com.mwr.example.sieve.DBContentProvider/Passwords/
+```
+
+##### File System Based Content Providers
+
+Content providers can provide access to the underlying filesystem. This allows apps to share files (the Android sandbox normally prevents this). You can use the Drozer modules `app.provider.read` and `app.provider.download` to read and download files, respectively, from exported file-based content providers. These content providers are susceptible to directory traversal, which allows otherwise protected files in the target application's sandbox to be read.
+
+```
+dz> run app.provider.download content://com.vulnerable.app.FileProvider/../../../../../../../../data/data/com.vulnerable.app/database.db /home/user/database.db
+Written 24488 bytes
+```
+
+Use the `scanner.provider.traversal` module to automate the process of finding content providers that are susceptible to directory traversal:
+
+```
+dz> run scanner.provider.traversal -a com.mwr.example.sieve
+Scanning com.mwr.example.sieve...
+Vulnerable Providers:
+  content://com.mwr.example.sieve.FileBackupProvider/
+  content://com.mwr.example.sieve.FileBackupProvider
+```
+
+Note that `adb` can also be used to query content providers:
 
 ```bash
 $ adb shell content query --uri content://com.owaspomtg.vulnapp.provider.CredentialProvider/credentials
@@ -605,131 +704,60 @@ Row: 0 id=1, username=admin, password=StrongPwd
 Row: 1 id=2, username=test, password=test
 ...
 ```
-* Vulnerable Broadcast
-
-To sniff intents install and run the application on a device (actual device or emulated device) and use tools like [drozer][f3b542e2] or [Intent Sniffer][033fefeb] to capture intents and broadcast messages.
 
 
-#### Remediation
-
-For an _activity_, _broadcast_ and _service_ the permission of the caller can be checked either by code or in the manifest.
-
-If not strictly required, be sure that your IPC does not have the `android:exported="true"` value in the `AndroidManifest.xml`, as otherwise this allows all other Apps on Android to communicate and invoke it.
-
-If the _intent_ is only broadcast/received in the same application, `LocalBroadcastManager` can be used so that, by design, other apps cannot receive the broadcast message. This reduces the risk of leaking sensitive information. `LocalBroadcastManager.sendBroadcast().
-BroadcastReceivers` should make use of the `android:permission` attribute, as otherwise any other application can invoke them. `Context.sendBroadcast(intent, receiverPermission);` can be used to specify permissions a receiver needs to have to read the broadcast. See also [sendBroadcast][2e0ef82d].
-You can also set an explicit application package name that limits the components this Intent will resolve to. If left to the default value of null, all components in all applications will considered. If non-null, the Intent can only match the components in the given application package.
-
-If your IPC is intended to be accessible to other applications, you can apply a security policy by using the `<permission>` element and set a proper `android:protectionLevel`. When using `android:permission` in a service declaration, other applications will need to declare a corresponding `<uses-permission>` element in their own manifest to be able to start, stop, or bind to the service.
-
-#### References
-
-* [Binders][0c656fa2]
-* [Services][d97f5ea9]
-* [Bound Services][5a7bc786]
-* [AIDL][8c349a63]
-* [Intents][a28d43d1]
-* [ContentProviders][6a30e426]
-* [Intent-filter][aa2cf4d9]
-* [Service][56866a0a]
-* [Provider][466ff32c]
-* [Receiver][988bd8a2]
-* [SendBroadcast][2e0ef82d]
-
-##### OWASP MASVS
-
-- V2.6: "No sensitive data is exposed via IPC mechanisms."
-
-##### OWASP Mobile Top 10
-* M1 - Improper Platform Usage
-* M2 - Insecure Data Storage
-
-##### CWE
-- [CWE-634: Weaknesses that Affect System Processes](https://cwe.mitre.org/data/definitions/634.html)
-
-
-### Testing for Sensitive Data Disclosure Through the User Interface
+### Checking for Sensitive Data Disclosure Through the User Interface
 
 #### Overview
 
-Sensitive data could be exposed if a user deliberately takes a screenshot of the application (containing sensitive data), or in the case of malicious application running on the device, that is able to continuously capture the screen. For example, capturing a screenshot of a bank application running on the device may reveal information about the user account, his credit, transactions and so on.
+Many apps require users to enter several kinds of data to, for example, register an account or make a payment. Sensitive data may be exposed if the app doesn't properly mask it, when displaying data in clear text.
 
-Masking of sensitive data when presented within an activity of an App should also be enforced to prevent disclosure and mitigate for example shoulder surfing.
+Masking of sensitive data, by showing asterisk or dots instead of clear text should be enforced within an app's activity to prevent disclosure and mitigate risks such as shoulder surfing.
 
 #### Static Analysis
 
-To verify if the application may expose sensitive information via the user interface or screenshot, detect if the `[FLAG_SECURE][ee87d351]` options is set in the activity that needs to be protected.
+To make sure an application is masking sensitive user input, check for the following attribute in the definition of EditText:
 
-You should be able to find something similar to the following line.
-
-```Java
-LayoutParams.FLAG_SECURE
 ```
-If not, the application is probably vulnerable to screen capturing.
+android:inputType="textPassword"
+```
 
-**(..TODO..) - Masking of sensitive data in input fields, how can it be implemented in Android**
+With this setting, dots (instead of the input characters) will be displayed in the text field, preventing the app from leaking passwords or pins to the user interface.
 
 #### Dynamic Analysis
 
-To analyse if the application leaks any sensitive information, run the application on a device and try to acquire a screenshot of the activity or activities you want to test.
+To determine whether the application leaks any sensitive information to the user interface, run the application and identify components that either show such information or take it as input.
 
-Steps to reproduce:
-* Install the application on an actual device or emulator
- * `adb shell install <apk_name>`
-* Run the application
-* Take a screenshot and save in the current folder
- * `adb shell screencap -p /sdcard/screencap.png && adb pull /sdcard/screencap.png`
-
-If you can see the application screenshot, the application is vulnerable; otherwise you will obtain a file of 0 bytes.
-
-![OMTG_DATAST_008_FLAG_SECURE](Images/Chapters/0x05d/3.png)
-
-Text fields should mask the input if sensitive information need to be keyed in.
-
-#### Remediation
-
-In order to prevent user or malicious applications to capture the screen of a specific activity, add the following code in the `my_app.java` activity file that you want to protect, and then call `setContentView`:
-
-```Java
-getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE,
-                WindowManager.LayoutParams.FLAG_SECURE);
-
-setContentView(R.layout.activity_main);
-```
-
-Note that this would automatically prevent the user from taking a manual screenshot. But even if the activity is tagged with `FLAG_SECURE`, this does not apply to any pop-up windows such as Dialogs, Toasts, etc.
-
-#### References
-
-- [FLAG_SECURE](ee87d351)
-
-##### OWASP MASVS
-
-- V2.7: "No sensitive data, such as passwords and credit card numbers, is exposed through the user interface or leaks to screenshots."
-
-##### OWASP Mobile Top 10
-* M4 - Unintended Data Leakage
-
-##### CWE
-- [CWE-200: Information Exposure](https://cwe.mitre.org/data/definitions/200.html)
+If the information is masked by, for example, replacing input with asterisks or dots, the app isn't leaking data to the user interface.
 
 
-
-### Testing for Sensitive Data in Backups
+### Testing Backups for Sensitive Data
 
 #### Overview
 
-When backup options are available, it is important to consider that user data may be stored within the App data directory. The backup feature could potentially leak sensitive information such as session identifier, usernames, email addresses, passwords, keys and much more. Consider to encrypt backup data and avoid to store any sensitive information that is not strictly required within the data directory of the App.
+Like other modern mobile operating systems, Android offers auto-backup features. The backups usually include copies of data and settings for all installed apps. Whether sensitive user data stored by the app may leak to those data backups is an obvious concern.
 
-Besides a local backup, Android provides two ways for Apps to backup their data to the cloud:
-* Auto Backup for Apps in Android 6.0 (available >= API level 23), which uploads the data to the users Google Drive account.
-* Key/Value Backup (Backup API or Android Backup Service), which uploads the data to the Android Backup Service.
+Given its diverse ecosystem, Android supports many backup options:
+
+- Stock Android has built-in USB backup facilities. When USB debugging is enabled, you can use the `adb backup` command to create full data backups and backups of an app's data directory.
+
+- Google provides a "Back Up My Data" feature that backs up all app data to Google's servers.
+
+- Two Backup APIs are available to app developers:
+
+ * [Key/Value Backup](https://developer.android.com/guide/topics/data/keyvaluebackup.html "Key/Value Backup") (Backup API or Android Backup Service) uploads to the Android Backup Service cloud.
+
+  * [Auto Backup for Apps](https://developer.android.com/guide/topics/data/autobackup.html "Auto Backup for Apps"): With Android 6.0 (>= API level 23), Google added the "Auto Backup for Apps feature." This feature automatically syncs at most 25MB of app data with the user's Google Drive account.
+
+- OEMs may provide additional options. For example, HTC devices have a "HTC Backup" option that performs daily backups to the cloud when activated.
 
 #### Static Analysis
 
 ##### Local
 
-In order to backup all your application’s data Android provides an attribute called `allowBackup`. This attribute is set within the `AndroidManifest.xml` file. If the value of this attribute is set to **true**, then the device allows users to backup the application using Android Debug Bridge (ADB) - `$ adb backup`.
+Android provides an attribute called [`allowBackup`](https://developer.android.com/guide/topics/manifest/application-element.html#allowbackup "allowBackup attribute") to back up all your application data. This attribute is set in the `AndroidManifest.xml` file. If the value of this attribute is **true**, the device allows users to back up the application with Android Debug Bridge (ADB) via the command `$ adb backup`.
+
+To prevent the app data backup, set the `android:allowBackup` attribute to **false**. When this attribute is unavailable, the allowBackup setting is enabled by default, and backup must be manually deactivated.
 
 > Note: If the device was encrypted, then the backup files will be encrypted as well.
 
@@ -739,127 +767,79 @@ Check the `AndroidManifest.xml` file for the following flag:
 android:allowBackup="true"
 ```
 
-If the value is set to **true**, investigate whether the App saves any kind of sensitive data, either by reading the source code, or inspecting the files in the App's data directory after using it extensively.
+If the flag value is **true**, determine whether the app saves any kind of sensitive data (check the test case "Testing for Sensitive Data in Local Storage").
 
+##### Cloud
 
-Regardless of using either key/value or auto backup, it need to be identified:
-* what files are sent to the cloud (e.g. SharedPreferences),
-* if the files contain sensitive information,
-* if sensitive information is protected through encryption before sending it to the cloud.
+Regardless of  whether you use key/value backup or auto backup, you must determine the following:
+- which files are sent to the cloud (e.g., SharedPreferences)
+- whether the files contain sensitive information
+- whether sensitive information is encrypted before being sent to the cloud.
 
-##### Auto Backup
-When setting the attribute `android:allowBackup` to true in the manifest file, auto backup is enabled. The attribute `android:fullBackupOnly` can also be used to activate auto backup when implementing a backup agent, but this is only  available for Android 6.0 onwards. Other Android version will be using key/value backup instead.
+> If you don't want to share files with Google Cloud, you can exclude them from [Auto Backup](https://developer.android.com/guide/topics/data/autobackup.html#IncludingFiles "Exclude files from Auto Backup"). Sensitive information stored at rest on the device should be encrypted before being sent to the cloud.
+
+- **Auto Backup**: You configure Auto Backup via the boolean attribute `android:allowBackup` within the application's manifest file. [Auto Backup](https://developer.android.com/guide/topics/data/autobackup.html#EnablingAutoBackup "Enabling AutoBackup") is enabled by default for applications that target Android 6.0 (API Level 23). You can use the attribute `android:fullBackupOnly` to activate auto backup when implementing a backup agent, but this attribute is available for Android versions 6.0 and above only. Other Android versions use key/value backup instead.
 
 ```xml
 android:fullBackupOnly
 ```
 
-Auto backup includes almost all of the App's files and stores them in the Google Drive account of the user, limited to 25MB per App. Only the most recent backup is stored, the previous backup is deleted.
+Auto backup includes almost all the app files and stores up 25 MB of them per app in the user's Google Drive account. Only the most recent backup is stored; the previous backup is deleted.
 
-##### Key/Value Backup
-To enable key/value backup the backup agent need to be defined in the manifest file. Look in `AndroidManifest.xml` for the following attribute:
+- **Key/Value Backup**: To enable key/value backup, you must define the backup agent in the manifest file. Look in `AndroidManifest.xml` for the following attribute:
 
 ```xml
 android:backupAgent
 ```
 
-To implement the key/value backup, either one of the following classes need to be extended:
-* BackupAgent
-* BackupAgentHelper
+To implement key/value backup, extend one of the following classes:
+- [BackupAgent](https://developer.android.com/reference/android/app/backup/BackupAgent.html "BackupAgent")
+-  [BackupAgentHelper](https://developer.android.com/reference/android/app/backup/BackupAgentHelper.html "BackupAgentHelper")
 
-Look for these classes within the source code to check for implementations of Key/Value backup.
+To check for key/value backup implementations, look for these classes in the source code.
 
 
 #### Dynamic Analysis
 
-Attempt to make a backup using `adb` and, if successful, inspect the backup archive for sensitive data. Open a terminal and run the following command:
+After executing all available app functions, attempt to back up via `adb`. If the backup is successful, inspect the backup archive for sensitive data. Open a terminal and run the following command:
 
 ```bash
-$ adb backup -apk -nosystem packageNameOfTheDesiredAPK
+$ adb backup -apk -nosystem <package-name>
 ```
 
-Approve the backup from your device by selecting the "_Back up my data_" option. After the backup process is finished, you will have a _.ab_ file in your current working directory.
-Run the following command to convert the .ab file into a .tar file.
+Approve the backup from your device by selecting the _Back up my data_ option. After the backup process is finished, the file _.ab_ will be in your working directory.
+Run the following command to convert the .ab file to tar.
 
 ```bash
 $ dd if=mybackup.ab bs=24 skip=1|openssl zlib -d > mybackup.tar
 ```
 
-Alternatively, use the [Android Backup Extractor](https://sourceforge.net/projects/adbextractor/) for this task. To install, download the [binary distribution](https://sourceforge.net/projects/adbextractor/files/latest/download). For the tool to work, you also have to download the [Oracle JCE Unlimited Strength Jurisdiction Policy Files for JRE7](http://www.oracle.com/technetwork/java/javase/downloads/jce-7-download-432124.html) or [JRE8](http://www.oracle.com/technetwork/java/javase/downloads/jce8-download-2133166.html), and place them in the JRE lib/security folder. Run the following command to convert the tar file:
+The [_Android Backup Extractor_](https://github.com/nelenkov/android-backup-extractor "Android Backup Extractor") is an alternative backup tool. To make the tool to work, you have to download the Oracle JCE Unlimited Strength Jurisdiction Policy Files for [JRE7](http://www.oracle.com/technetwork/java/javase/downloads/jce-7-download-432124.html "Oracle JCE Unlimited Strength Jurisdiction Policy Files JRE7") or [JRE8](http://www.oracle.com/technetwork/java/javase/downloads/jce8-download-2133166.html "Oracle JCE Unlimited Strength Jurisdiction Policy Files JRE8") and place them in the JRE lib/security folder. Run the following command to convert the tar file:
 
 ```bash
 java -jar android-backup-extractor-20160710-bin/abe.jar unpack backup.ab
 ```
 
-Extract the tar file into your current working directory to perform your analysis for sensitive data.
+Extract the tar file to your working directory.
 
 ```bash
 $ tar xvf mybackup.tar
 ```
 
-#### Remediation
 
-To prevent backing up the app's data, set the `android:allowBackup` attribute to **false** in `AndroidManifest.xml`. If this attribute is not available the allowBackup setting is enabled by default. Therefore it need to be explicitly disabled in order to deactivate it.
-
-Sensitive information should not be sent in clear text to the cloud. It should either be:
-
-* avoided to store the information in the first place or
-* encrypt the information in rest, before sending it to the cloud.
-
-Files can also be excluded from Auto Backup, in case they should not be shared with the Google Cloud, see [including files][e894a591].
-
-
-#### References
-
-- Documentation for the Application tag: https://developer.android.com/guide/topics/manifest/application-element.html#allowbackup
-* [Backing up App Data to the Cloud][fd7bd757]
-* [Key/Value Backup][1aee61a9]
-* [BackupAgentHelper][48d8d464]
-* [BackupAgent][03c7b547]
-* [Auto Backup][bf8bd4ca]
-
-
-##### OWASP MASVS
-
-- V2.8: "No sensitive data is included in backups generated by the mobile operating system."
-
-##### OWASP Mobile Top 10
-* M1 - Improper Platform Usage
-* M2 - Insecure Data Storage
-
-##### CWE
-* [CWE-530](https://cwe.mitre.org/data/definitions/530.html)
-
-
-### Testing for Sensitive Information in Auto-Generated Screenshots
+### Finding Sensitive Information in Auto-Generated Screenshots
 
 #### Overview
 
-Manufacturers want to provide device users an aesthetically pleasing effect when an application is entered or exited, hence they introduced the concept of saving a screenshot when the application goes into the background. This feature could potentially pose a security risk for an application, as the screenshot containing sensitive information (e.g. a screenshot of an email or corporate documents) is written to local storage, where it is recovered either by a rogue application on a jailbroken device, or by someone who steals the device.
+Manufacturers want to provide device users with an aesthetically pleasing experience at application startup and exit, so they introduced the screenshot-saving feature for use when the application is backgrounded. This feature may pose a security risk. Sensitive data may be exposed if the user deliberately screenshots the application while sensitive data is displayed. A malicious application that is running on the device and able to continuously capture the screen may also expose data. Screenshots are written to local storage, from which they may be recovered by a rogue application (if the device is rooted) or someone who has stolen the device.
+
+For example, capturing a screenshot of a banking application may reveal information about the user's account, credit, transactions, and so on.
 
 #### Static Analysis
 
-In Android, when the App goes into background a screenshot of the current activity is taken and is used to give a pleasing effect when the App is next entered. However, this would leak sensitive information that is present within the App.
+ A screenshot of the current activity is taken when an Android app goes into background and displayed for aesthetic purposes when the app returns to the foreground. However, this may leak sensitive information.
 
-To verify if the application may expose sensitive information via task switcher, detect if the `[FLAG_SECURE][ee87d351]` options is set. You should be able to find something similar to the following line.
-
-```Java
-LayoutParams.FLAG_SECURE
-```
-If not, the application is probably vulnerable to screen capturing.
-
-#### Dynamic Analysis
-
-During black-box testing, open any screen within the App that contains sensitive information and click on Home button so that the App goes into background. Now press the task-switcher button, to see the snapshot. As showed below, if `SECURE_FLAG` is set (image on the left), the snapshot is entirely black, while if the `SECURE_FLAG` is not set (image on the right), information within the activity are shown:
-
-| `SECURE_FLAG` not set  | `SECURE_FLAG` set  |
-|---|---|
-| ![OMTG_DATAST_010_1_FLAG_SECURE](Images/Chapters/0x05d/1.png)   |  ![OMTG_DATAST_010_2_FLAG_SECURE](Images/Chapters/0x05d/2.png) |
-
-
-#### Remediation
-
-To prevent users or malicious applications access information from backgrounded applications use the `SECURE_FLAG` as shown below:
+To determine whether the application may expose sensitive information via the app switcher, find out whether the [`FLAG_SECURE`](https://developer.android.com/reference/android/view/Display.html#FLAG_SECURE "FLAG_SECURE Option") option has been set. You should find something similar to the following code snippet:
 
 ```Java
 getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE,
@@ -868,261 +848,336 @@ getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE,
 setContentView(R.layout.activity_main);
 ```
 
-Moreover, the following suggestions can also be implemented to enhance your application security posture:
-* Quit the app entirely when backgrounded. This will destroy any retained GUI screens.
-* Nullify the data on a GUI screen before leaving the screen or logging out.
-
-#### References
-
-- [link to relevant how-tos, papers, etc.]
-
-
-##### OWASP MASVS
-
-- V2.9: "The app removes sensitive data from views when backgrounded."
-
-##### OWASP Mobile Top 10
-* M1 - Improper Platform Usage
-* M2 - Insecure Data Storage
-
-##### CWE
-* [CWE-530](https://cwe.mitre.org/data/definitions/530.html)
-
-
-### Testing for Sensitive Data in Memory
-
-#### Overview
-
-Analyzing the memory can help to identify the root cause of different problems, like for example why an application is crashing, but can also be used to identify sensitive data. This section describes how to check for sensitive data and disclosure of data in general within the process memory.
-
-To be able to investigate the memory of an application a memory dump needs to be created first or the memory needs to be viewed with real-time updates. This is also already the problem, as the application only stores certain information in memory if certain functions are triggered within the application. Memory investigation can of course be executed randomly in every stage of the application, but it is much more beneficial to understand first what the mobile application is doing and what kind of functionalities it offers and also make a deep dive into the decompiled code before making any memory analysis.
-Once sensitive functions are identified (like decryption of data) the investigation of a memory dump might be beneficial in order to identify sensitive data like a key or the decrypted information itself.
-
-#### Static Analysis
-
-It needs to be identified within the code when sensitive information is stored within a variable or processed and is therefore available within the memory. This information can then be used in dynamic testing when using the App.
+If the option has not been set, the application is vulnerable to screen capturing.
 
 #### Dynamic Analysis
 
-To analyse the memory of an App, the app must be **debuggable**.
-See the instructions in XXX (**#TODO-Link to repackage and sign**) on how to repackage and sign an Android App to enable debugging for an app, if not already done. Also adb integration need to be activated in Android Studio in “_Tools/Android/Enable ADB Integration_” in order to take a memory dump.
+While black-box testing the app, navigate to any screen that contains sensitive information and click the home button to send the app to the background, then press the app switcher button to see the snapshot. As shown below, if `FLAG_SECURE` is set (right image), the snapshot will be empty; if the flag has not been set (left image), activity information will be shown:
 
-For rudimentary analysis Android Studio built in tools can be used. Android studio includes tools in the “_Android Monitor_” tab to investigate the memory. Select the device and app you want to analyse in the "_Android Monitor_" tab and click on "_Dump Java Heap_" and a _.hprof_ file will be created.
+| `FLAG_SECURE` not set  | `FLAG_SECURE` set  |
+|---|---|
+| ![OMTG_DATAST_010_1_FLAG_SECURE](Images/Chapters/0x05d/1.png)   |  ![OMTG_DATAST_010_2_FLAG_SECURE](Images/Chapters/0x05d/2.png) |
+
+
+### Checking Memory for Sensitive Data
+
+#### Overview
+
+Analyzing memory can help developers identify the root causes of several problems, such as application crashes. However, it can also be used to access sensitive data. This section describes how to check for data disclosure via process memory.
+
+First identify sensitive information that is stored in memory. Sensitive assets have likely been loaded into memory at some point. The objective is to verify that this information is exposed as briefly as possible.
+
+To investigate an application's memory, you must first create a memory dump. You can also analyze the memory in real-time, e.g., via a debugger. Regardless of your approach, memory dumping is a very error-prone process in terms of verification because each dump contains the output of executed functions. You may miss executing critical scenarios. In addition, overlooking data during analysis is probable unless you know the data's footprint (either the exact value or the data format). For example, if the app encrypts with a randomly generated symmetric key, you likely won't be able to spot it in memory unless you can recognize the key's value in another context.
+
+Therefore, you are better off starting with static analysis.
+
+#### Static Analysis
+
+For an overview of possible sources of data exposure, check the documentation and identify application components before you examine the source code. For example, sensitive data from a backend may be in the HTTP client, the XML parser, etc. You want all these copies to be removed from memory as soon as possible.
+
+In addition, understanding the application's architecture and the architecture's role in the system will help you identify sensitive information that doesn't have to be exposed in memory at all. For example, assume your app receives data from one server and transfers it to another without any processing. That data can be handled in an encrypted format, which prevents exposure in memory.
+
+However, if you need to expose sensitive data in memory, you should make sure that your app is designed to expose as few data copies as possible as briefly as possible. In other words, you want the handling of sensitive data to be centralized (i.e., with as few components as possible) and based on primitive, mutable data structures.
+
+The latter requirement gives developers direct memory access. Make sure that they use this access to overwrite the sensitive data with dummy data (typically zeroes). Examples of preferable data types include `byte []` and `char []`, but not `String` or `BigInteger`. Whenever you try to modify an immutable object like `String`, you create and change a copy of the object.
+
+Using non-primitive mutable types like `StringBuffer` and `StringBuilder` may be acceptable, but it's indicative and requires care. Types like `StringBuffer` are used to modify content (which is what you want to do). To access such a type's value, however, you would use the `toString` method, which would create an immutable copy of the data. There are several ways to use these data types without creating an immutable copy, but they require more effort than simply using a primitive array. Safe memory management is one benefit of using types like `StringBuffer` , but this can be a two-edged sword. If you try to modify the content of one of these types and the copy exceeds the buffer capacity, the buffer size will automatically increase. The buffer content may be copied to a different location, leaving the old content without a reference you can use to overwrite it.
+
+Unfortunately, few libraries and frameworks are designed to allow sensitive data to be overwritten. For example, destroying a key, as shown below, doesn't really remove the key from memory:
+
+```java
+SecretKey secretKey = new SecretKeySpec("key".getBytes(), "AES");
+secretKey.destroy();
+```
+
+Overwriting the backing byte-array from `secretKey.getEncoded` doesn't remove the key either; the SecretKeySpec-based key returns a copy of the backing byte-array. See the "Remediation" section for the proper way to remove a `SecretKey` from memory.
+
+The RSA key pair is based on the `BigInteger` type and therefore resides in memory after its first use outside the `AndroidKeyStore`. Some ciphers (such as the AES `Cipher` in `BouncyCastle`) do not properly clean up their byte-arrays.
+
+User-provided data (credentials, social security numbers, credit card information, etc.) is another type of data that may be exposed in memory. Regardless of whether you flag it as a password field, `EditText` delivers content to the app via the `Editable` interface. If your app doesn't provide `Editable.Factory`, user-provided data will probably be exposed in memory for longer than necessary. The default `Editable` implementation, the `SpannableStringBuilder`, causes the same issues as Java's `StringBuilder` and `StringBuffer` cause (discussed above).
+
+In summary, when performing static analysis to identify sensitive data that is exposed in memory, you should:
+- Try to identify application components and map where data is used.
+- Make sure that sensitive data is handled by as few components as possible.
+- Make sure that object references are properly removed once the object containing the sensitive data is no longer needed.
+- Make sure that garbage collection is requested after references have been removed.
+- Make sure that sensitive data gets overwritten as soon as it is no longer needed.
+  - Don't represent such data with immutable data types (such as `String` and `BigInteger`).
+  - Avoid non-primitive data types (such as `StringBuilder`).
+  - Overwrite references before removing them, outside the `finalize` method.
+  - Pay attention to third-party components (libraries and frameworks).
+    Public APIs are good indicators. Determine whether the public API handles the sensitive data as described in this chapter.
+
+
+**The following section describes pitfalls of data leakage in memory and best practices for avoiding them.**
+
+Don't use immutable structures (e.g., `String` and `BigInteger`) to represent secrets. Nullifying these structures will be ineffective: the garbage collector may collect them, but they may remain on the heap after garbage collection. Nevertheless, you should ask for garbage collection after every critical operation (e.g., encryption, parsing server responses that contain sensitive information). When copies of the information have not been properly cleaned (as explained below), your request will help reduce the length of time for which these copies are available in memory.
+
+To properly clean sensitive information from memory, store it in primitive data types, such as byte-arrays (`byte[]`) and char-arrays (`char[]`). As described in the "Static Analysis" section above, you should avoid storing the information in mutable non-primitive data types.
+
+Make sure to overwrite the content of the critical object once the object is no longer needed. Overwriting the content with zeroes is one simple and very popular method:
+
+```java
+byte[] secret = null;
+try{
+    //get or generate the secret, do work with it, make sure you make no local copies
+} finally {
+    if (null != secret) {
+        Arrays.fill(secret, (byte) 0);
+    }
+}
+```
+This doesn't, however, guarantee that the content will be overwritten at run time. To optimize the bytecode, the compiler will analyze and decide not to overwrite data because it will not be used afterwards (i.e., it is an unnecessary operation). Even if the code is in the compiled DEX, the optimization may occur during the just-in-time or ahead-of-time compilation in the VM.
+
+There is no silver bullet for this problem because different solutions have different consequences. For example, you may perform additional calculations (e.g., XOR the data into a dummy buffer), but you'll have no way to know the extent of the compiler's optimization analysis. On the other hand, using the overwritten data outside the compiler's scope (e.g., serializing it in a temp file) guarantees that it will be overwritten but obviously impacts performance and maintenance.
+
+Then, using `Arrays.fill` to overwrite the data is a bad idea because the method is an obvious hooking target (see the chapter "Tampering and Reverse Engineering on Android" for more details).
+
+The final issue with the above example is that the content was overwritten with zeroes only. You should try to overwrite critical objects with random data or content from non-critical objects. This will make it really difficult to construct scanners that can identify sensitive data on the basis of its management.
+
+Below is an improved version of the previous example:
+
+```java
+byte[] nonSecret = somePublicString.getBytes("ISO-8859-1");
+byte[] secret = null;
+try{
+    //get or generate the secret, do work with it, make sure you make no local copies
+} finally {
+    if (null != secret) {
+        for (int i = 0; i < secret.length; i++) {
+            secret[i] = nonSecret[i % nonSecret.length];
+        }
+
+        FileOutputStream out = new FileOutputStream("/dev/null");
+        out.write(secret);
+        out.flush();
+        out.close();
+    }
+}
+```
+
+For more information, take a look at [Securely Storing Sensitive Data in RAM](https://www.nowsecure.com/resources/secure-mobile-development/coding-practices/securely-store-sensitive-data-in-ram/ "Securely store sensitive data in RAM").
+
+In the "Static Analysis" section, we mentioned the proper way to handle cryptographic keys when you are using `AndroidKeyStore` or `SecretKey`.
+
+For a better implementation of `SecretKey`, look at the `SecureSecretKey` class below. Although the implementation is probably missing some boilerplate code that would make the class compatible with `SecretKey`, it addresses the main security concerns:
+- No cross-context handling of sensitive data. Each copy of the key can be cleared from within the scope in which it was created.
+- The local copy is cleared according to the recommendations given above.
+
+```java
+public class SecureSecretKey implements javax.crypto.SecretKey, Destroyable {
+    private byte[] key;
+    private final String algorithm;
+
+    /** Constructs SecureSecretKey instance out of a copy of the provided key bytes.
+      * The caller is responsible of clearing the key array provided as input.
+      * The internal copy of the key can be cleared by calling the destroy() method.
+      */
+    public SecureSecretKey(final byte[] key, final String algorithm) {
+        this.key = key.clone();
+        this.algorithm = algorithm;
+    }
+
+    public String getAlgorithm() {
+        return this.algorithm;
+    }
+
+    public String getFormat() {
+        return "RAW";
+    }
+
+    /** Returns a copy of the key.
+      * Make sure to clear the returned byte array when no longer needed.
+      */
+    public byte[] getEncoded() {
+        if(null == key){
+            throw new NullPointerException();
+        }
+
+        return key.clone();
+    }
+
+    /** Overwrites the key with dummy data to ensure this copy is no longer present in memory.*/
+    public void destroy() {
+        if (isDestroyed()) {
+            return;
+        }
+
+        byte[] nonSecret = new String("RuntimeException").getBytes("ISO-8859-1");
+        for (int i = 0; i < key.length; i++) {
+          key[i] = nonSecret[i % nonSecret.length];
+        }
+
+        FileOutputStream out = new FileOutputStream("/dev/null");
+        out.write(key);
+        out.flush();
+        out.close();
+
+        this.key = null;
+        System.gc();
+    }
+
+    public boolean isDestroyed() {
+        return key == null;
+    }
+}
+
+```
+
+Secure user-provided data is the final secure information type usually found in memory. This is often managed by implementing a custom input method, for which you should follow the recommendations given here. However, Android allows information to be partially erased from `EditText` buffers via a custom `Editable.Factory`.
+
+```java
+EditText editText = ...; //  point your variable to your EditText instance
+EditText.setEditableFactory(new Editable.Factory() {
+  public Editable newEditable(CharSequence source) {
+  ... // return a new instance of a secure implementation of Editable.
+  }
+});
+```
+
+Refer to the `SecureSecretKey` example above for an example `Editable` implementation. Note that you will be able to securely handle all copies made by `editText.getText` if you provide your factory. You can also try to overwrite the internal `EditText` buffer by calling `editText.setText`, but there is no guarantee that the buffer will not have been copied already. If you choose to rely on the default input method and `EditText`, you will have no control over the keyboard or other components that are used. Therefore, you should use this approach for semi-confidential information only.
+
+#### Dynamic Analysis
+
+Static analysis will help you identify potential problems, but it can't provide statistics about how long data has been exposed in memory, nor can it help you identify problems in closed-source dependencies. This is where dynamic analysis comes into play.
+
+There are basically two ways to analyze the memory of a process: live analysis via a debugger and analyzing one or more memory dumps. Because the former is more of a general debugging approach, we will concentrate on the latter.
+
+For rudimentary analysis, you can use Android Studio's built-in tools. They are on the _Android Monitor_ tab. To dump memory, select the device and app you want to analyze and click _Dump Java Heap_. This will create a _.hprof_ file in the _captures_ directory, which is on the app's project path.
 
 ![Create Heap Dump](Images/Chapters/0x05d/Dump_Java_Heap.png)
 
-In the new tab that shows the _.hprof_ file, the Package Tree View should be selected. Afterwards the package name of the app can be used to navigate to the instances of classes that were saved in the memory dump.
+To navigate through class instances that were saved in the memory dump, select the Package Tree View in the tab showing the _.hprof_ file.
 
 ![Create Heap Dump](Images/Chapters/0x05d/Package_Tree_View.png)
 
-For deeper analysis of the memory dump Eclipse Memory Analyser (MAT) should be used. The _.hprof_ file will be stored in the directory "captures", relative to the project path open within Android Studio.
+For more advanced analysis of the memory dump, use the Eclipse Memory Analyzer (MAT). It is available as an Eclipse plugin and as a standalone application.
 
-Before the _.hprof_ file can be opened in MAT it needs to be converted. The tool _hprof-conf_ can be found in the Android SDK in the directory platform-tools.
+To analyze the dump in MAT, use the _hprof-conv_ platform tool, which comes with the Android SDK.
 
 ```bash
-./hprof-conv file.hprof file-converted.hprof
+./hprof-conv memory.hprof memory-mat.hprof
 ```
 
-By using MAT, more functions are available like usage of the Object Query Language (OQL). OQL is an SQL-like language that can be used to make queries in the memory dump. Analysis should be done on the dominator tree as only this contains the variables/memory of static classes.
+MAT (Memory Analyzer Tool) provides several tools for analyzing the memory dump. For example, the _Histogram_ provides an estimate of the number of objects that have been captured from a given type, and the _Thread Overview_ shows processes' threads and stack frames. The _Dominator Tree_ provides information about keep-alive dependencies between objects. You can use regular expressions to filter the results these tools provide.
 
-To quickly discover potential sensitive data in the _.hprof_ file, it is also useful to run the `string` command against it. When doing a memory analysis, check for sensitive information like:
-* Password and/or Username
-* Decrypted information
-* User or session related information
-* Session ID
-* Interaction with OS, e.g. reading file content
+_Object Query Language_ studio is a MAT that allows you to query objects from the memory dump with an SQL-like language. The tool allows you to transform simple objects by invoking Java methods on them, and it provides an API for building sophisticated tools on top of the MAT.
 
-#### Remediation
+```sql
+SELECT * FROM java.lang.String
+```
+In the example above, all `String` objects present in the memory dump will be selected. The results will include the object's class, memory address, value, and retain count. To filter this information and see only the value of each string, use the following code:
 
-If sensitive information is used within the application memory it should be nulled immediately after usage to reduce the attack surface.
+```sql
+SELECT toString(object) FROM java.lang.String object
+```
 
-#### References
+Or
 
-* [Securely stores sensitive data in RAM][6227fc2d]
+```sql
+SELECT object.toString() FROM java.lang.String object
+```
 
-Tools:
-* [Android Studio’s Memory Monitor][c96db86c]
-* [Eclipse’s MAT (Memory Analyzer Tool) standalone][681372d4]
-* [Memory Analyzer which is part of Eclipse][6ff3fc11]
-* [Fridump][ebd40e26]
-* [Fridump Repo][faab1495]
-* [LiME][6204d45e] (formerly DMD)
+SQL supports primitive data types as well, so you can do something like the following to access the content of all `char` arrays:
 
-##### References
+```sql
+SELECT toString(arr) FROM char[] arr
+```
 
-* OWASP MASVS
+Don't be surprised if you get results that are similar to the previous results; after all, `String` and other Java data types are just wrappers around primitive data types. Now let's filter the results. The following sample code will select all byte arrays that contain the ASN.1 OID of an RSA key. This doesn't imply that a given byte array actually contains an RSA (the same byte sequence may be part of something else), but this is probable.
 
-- V2.10: "The app does not hold sensitive data in memory longer than necessary, and memory is cleared explicitly after use."
+```sql
+SELECT * FROM byte[] b WHERE toString(b).matches(".*1\.2\.840\.113549\.1\.1\.1.*")
+```
 
-##### OWASP Mobile Top 10
-* M1 - Improper Platform Usage
-* M2 - Insecure Data Storage
+Finally, you don't have to select whole objects. Consider an SQL analogy: classes are tables, objects are rows, and fields are columns. If you want to find all objects that have a "password" field, you can do something like the following:
 
-##### CWE
-* CWE-316 - Cleartext Storage of Sensitive Information in Memory
+```sql
+SELECT password FROM ".*" WHERE (null != password)
+```
+
+During your analysis, search for:
+- Indicative field names: "password", "pass", "pin", "secret", "private", etc.
+- Indicative patterns (e.g., RSA footprints) in strings, char arrays, byte arrays, etc.
+- Known secrets (e.g., a credit card number that you've entered or an authentication token provided by the backend)
+- etc.
+
+Repeating tests and memory dumps will help you obtain statistics about the length of data exposure. Furthermore, observing the way a particular memory segment (e.g., a byte array) changes may lead you to some otherwise unrecognizable sensitive data (more on this in the "Remediation" section below).
 
 
 ### Testing the Device-Access-Security Policy
 
 #### Overview
 
-Apps that are processing or querying for sensitive information should ensure that they are running on a trusted and secure environment. In order to be able to achieve this, the App can enforce the following local checks on the device:
+Apps that process or query sensitive information should run in a trusted and secure environment. To create this environment, the app can check the device for the following:
 
-* PIN or password set to unlock the device
-* Usage of a minimum Android OS version
-* Detection of activated USB Debugging
-* Detection of encrypted device
-* Detection of rooted device (see also OMTG-ENV-006)
-
-
-#### Static Analysis
-
-In oder to be able to test the device-access-security policy that is enforced by the App, a written copy of the policy need to be provided. The policy should define what checks are available and how they are enforced. For example one check could enforce that the App only runs on Android Marshmallow (Android 6.0) or higher and the App is closing itself if the App is running on an Android version < 6.0.
-
-The functions within the code that implement the policy need to be identified and checked if they can be bypassed.
-
-#### Dynamic Analysis
-
-The dynamic analysis depends on the checks that are enforced by App and their expected behavior and need to be checked if they can be bypassed.
-
-#### Remediation
-
-Different checks on the Android device can be implemented by querying different system preferences from Settings.Secure <sup>[1]</sup>. The Device Administration API <sup>[2]</sup> offers different mechanism to create security aware applications, that are able to enforce password policies or encryption of the device.
-
-
-#### References
-
-- [1] Settings.Secure - https://developer.android.com/reference/android/provider/Settings.Secure.html
-- [2] Device Administration API - https://developer.android.com/guide/topics/admin/device-admin.html
-
-#### References
-
-##### OWASP MASVS
-
-- V2.11: "The app enforces a minimum device-access-security policy, such as requiring the user to set a device passcode."
-
-##### OWASP Mobile Top 10
-* M1 - Improper Platform Usage
-
-##### CWE
-- CWE: [Link to CWE issue] - (.. TODO ..)
-
-
-### Verifying User Education Controls
-
-#### Overview
-
-Educating users is a crucial part in the usage of mobile Apps. Even though many security controls are already in place, they might be circumvented or misused through the users.
-
-The following list shows potential warnings or advises for a user when opening the App the first time and using it:
-* App shows after starting it the first time a list of data it is storing locally and remotely. This can also be a link to an external ressource as the information might be quite extensive.
-* If a new user account is created within the App it should show the user if the password provided is considered as secure and applies to best practice password policies.
-* If the user is installing the App on a rooted device a warning should be shown that this is dangerous and deactivates security controls on OS level and is more likely to be prone to Malware. See also OMTG-DATAST-011 for more details.
-* If a user installed the App on an outdated Android version a warning should be shown. See also OMTG-DATAST-010 for more details.
-
-**(..TODO..) - What else can be a warning on Android?**
+- PIN- or password-protected device locking
+- Recent Android OS version
+- USB Debugging activation
+- Device encryption
+- Device rooting (see also "Testing Root Detection")
 
 #### Static Analysis
 
-**...TODO...**
+To test the device-access-security policy that the app enforces, a written copy of the policy must be provided. The policy should define available checks and their enforcement. For example, one check could require that the app run only on Android Marshmallow (Android 6.0) or a more recent version, closing the app or displaying a warning if the Android version is less than 6.0.
+
+Check the source code for functions that implement the policy and determine whether it can be bypassed.
+
+You can implement checks on the Android device by querying  [_Settings.Secure_](https://developer.android.com/reference/android/provider/Settings.Secure.html "Settings.Secure") for system preferences. [_Device Administration API_](https://developer.android.com/guide/topics/admin/device-admin.html "Device Administration API") offers techniques for creating applications that can enforce password policies and device encryption.
 
 #### Dynamic Analysis
 
-After installing the App and also while using it, it should be checked if any warnings are shown to the user, that have an education purpose.
-**...TODO...**
+The dynamic analysis depends on the checks enforced by the app and their expected behavior. If the checks can be bypassed, they must be validated.
 
-#### Remediation
+### References
 
-Warnings should be implemented that address the key points listed in the overview section.
-**...TODO...**
+#### OWASP Mobile Top 10 2016
 
-#### References
+- M1 - Improper Platform Usage - https://www.owasp.org/index.php/Mobile_Top_10_2016-M1-Improper_Platform_Usage
+- M2 - Insecure Data Storage - https://www.owasp.org/index.php/Mobile_Top_10_2016-M2-Insecure_Data_Storage
+- M4 - Unintended Data Leakage
 
-**...TODO...**
+#### OWASP MASVS
 
-##### OWASP MASVS
+- V2.1: "System credential storage facilities are used appropriately to store sensitive data, such as user credentials or cryptographic keys."
+- V2.2: "No sensitive data is written to application logs."
+- V2.3: "No sensitive data is shared with third parties unless it is a necessary part of the architecture."
+- V2.4: "The keyboard cache is disabled on text inputs that process sensitive data."
+- V2.5: "The clipboard is deactivated on text fields that may contain sensitive data."
+- V2.6: "No sensitive data is exposed via IPC mechanisms."
+- V2.7: "No sensitive data, such as passwords or pins, is exposed through the user interface."
+- V2.8: "No sensitive data is included in backups generated by the mobile operating system."
+- V2.9: "The app removes sensitive data from views when backgrounded."
+- V2.10: "The app does not hold sensitive data in memory longer than necessary, and memory is cleared explicitly after use."
 
-- V2.12: "The app educates the user about the types of personally identifiable information processed, as well as security best practices the user should follow in using the app."
+#### CWE
 
-##### OWASP Mobile Top 10
-* M1 - Improper Platform Usage
+- CWE-117: Improper Output Neutralization for Logs
+- CWE-200 - Information Exposure
+- CWE-316 - Cleartext Storage of Sensitive Information in Memory
+- CWE-359 - Exposure of Private Information ('Privacy Violation')
+- CWE-524 - Information Exposure Through Caching
+- CWE-532: Information Exposure Through Log Files
+- CWE-534: Information Exposure Through Debug Log Files
+- CWE-311 - Missing Encryption of Sensitive Data
+- CWE-312 - Cleartext Storage of Sensitive Information
+- CWE-522 - Insufficiently Protected Credentials
+- CWE-530 - Exposure of Backup File to an Unauthorized Control Sphere
+- CWE-634 - Weaknesses that Affect System Processes
+- CWE-922 - Insecure Storage of Sensitive Information
 
-##### CWE
-- CWE: [Link to CWE issue] - **.. TODO ...**
+#### Tools
 
-
-
-
-
-
-
-<!-- References links
-If a link is outdated, you can change it here and it will be updated everywhere -->
-
-<!-- OMTG-DATAST-001-1 -->
-[707361af]: http://developer.android.com/reference/android/security/KeyChain.html "Android KeyChain"
-[19149717]: http://developer.android.com/training/articles/keystore.html "Android KeyStore System"
-[0d4e8f69]: http://www.androidauthority.com/use-android-keystore-store-passwords-sensitive-information-623779/ "Use Android Keystore"
-[8705d59b]: https://developer.android.com/reference/javax/crypto/Cipher.html "Cipher"
-[c941abfc]: https://developer.android.com/reference/java/security/SecureRandom.html "SecureRandom"
-[fcc82125]: https://developer.android.com/reference/javax/crypto/KeyGenerator.html "KeyGenerator"
-[ff4a4029]: https://developer.android.com/reference/android/accounts/AccountManager.html "AccountManager"
-
-<!-- OMTG-DATAST-001-2 -->
-[tempfiles]: https://www.sqlite.org/tempfiles.html "Journal files"
-[lockingv3]: https://www.sqlite.org/lockingv3.html "Lock Files"
-[e65ea363]: http://developer.android.com/guide/topics/data/data-storage.html#filesInternal "UsingInternalStorage"
-[5e4c3059]: https://developer.android.com/guide/topics/data/data-storage.html#filesExternal "UsingExternalStorage"
-[afd8258f]: http://developer.android.com/reference/android/content/SharedPreferences.html "SharedPreferences"
-[7e90d2dc]: https://www.zetetic.net/sqlcipher/sqlcipher-for-android/ "SQLCipher"
-[6dea1401]: https://github.com/scottyab/secure-preferences "SecurePreferences"
-[1e23894b]: https://developer.android.com/training/basics/data-storage/index.html "AndroidStorage"
-[fb530e1c]: http://developer.android.com/training/articles/security-tips.html#StoringData "StoringData"
-[be9ea354]: https://github.com/google/enjarify "Enjarify"
-[b54750a7]: https://github.com/skylot/jadx "JADX"
-[3d1bb980]: https://github.com/pxb1988/dex2jar "Dex2jar"
-[a9965341]: http://developer.android.com/tools/help/lint.html "Lint"
-[3b9b0b6f]: http://www.sqlite.org/cli.html "Sqlite3"
-
-<!-- OMTG-DATAST-002 -->
-[45476f61]: http://proguard.sourceforge.net/ "ProGuard"
-[7bd6e70d]: https://www.guardsquare.com/dexguard "DexGuard"
-[99e277eb]: http://developer.android.com/tools/help/logcat.html "LogCat"
-[c83d7c35]: https://github.com/google/android-classyshark "ClassyShark"
-[de2ec1fd]: http://developer.android.com/reference/android/util/Log.html "ClassLogOverview"
-[7f106169]: http://developer.android.com/tools/debugging/debugging-log.html "DebuggingLogsLogCat"
-
-<!-- OMTG-DATAST-003 -->
-[e894a591]: https://developer.android.com/guide/topics/data/autobackup.html#IncludingFiles "IncludingFiles"
-[fd7bd757]: https://developer.android.com/guide/topics/data/backup.html "BackingUpAppDataToCloud"
-[1aee61a9]: https://developer.android.com/guide/topics/data/keyvaluebackup.html "KeyValueBackup"
-[48d8d464]: https://developer.android.com/reference/android/app/backup/BackupAgentHelper.html "BackupAgentHelper"
-[03c7b547]: https://developer.android.com/reference/android/app/backup/BackupAgent.html "BackupAgent"
-[bf8bd4ca]: https://developer.android.com/guide/topics/data/autobackup.html "AutoBackup"
-
-<!-- OMTG-DATAST-011 -->
-[c96db86c]: http://developer.android.com/tools/debugging/debugging-memory.html#ViewHeap "MemoryMonitor"
-[681372d4]: https://eclipse.org/mat/downloads.php "EclipseMATStandalone"
-[6ff3fc11]: https://www.eclipse.org/downloads/ "MemoryAnalyzerWhichIsPartOfEclipse"
-[ebd40e26]: http://pentestcorner.com/introduction-to-fridump "Fridump"
-[faab1495]: https://github.com/Nightbringer21/fridump "FridumpRepo"
-[6204d45e]: https://github.com/504ensicsLabs/LiME "LiME"
-[6227fc2d]: https://www.nowsecure.com/resources/secure-mobile-development/coding-practices/securely-store-sensitive-data-in-ram/ "SecurelyStoreDataInRAM"
-
-<!-- OMTG-DATAST-007 -->
-[0c656fa2]: https://developer.android.com/reference/android/os/Binder.html "IPCBinder"
-[d97f5ea9]: https://developer.android.com/guide/components/services.html "IPCServices"
-[a28d43d1]: https://developer.android.com/reference/android/content/Intent.html "IPCIntent"
-[6a30e426]: https://developer.android.com/reference/android/content/ContentProvider.html "IPCContentProviders"
-[aa2cf4d9]: https://developer.android.com/guide/topics/manifest/intent-filter-element.html "IntentFilterElement"
-[56866a0a]: https://developer.android.com/guide/topics/manifest/service-element.html "ServiceElement"
-[466ff32c]: https://developer.android.com/guide/topics/manifest/provider-element.html "ProviderElement"
-[988bd8a2]: https://developer.android.com/guide/topics/manifest/receiver-element.html "ReceiverElement"
-[5a7bc786]: https://developer.android.com/guide/components/bound-services.html "BoundServices"
-[8c349a63]: https://developer.android.com/guide/components/aidl.html "AIDL"
-[2e0ef82d]: https://developer.android.com/reference/android/content/Context.html#sendBroadcast(android.content.Intent) "SendBroadcast"
-[033fefeb]: https://www.nccgroup.trust/us/about-us/resources/intent-sniffer/ "IntentSniffer"
-[f3b542e2]: https://labs.mwrinfosecurity.com/tools/drozer/ "Drozer"
-
-<!-- OMTG-DATAST-008 -->
-[ee87d351]: https://developer.android.com/reference/android/view/Display.html#FLAG_SECURE "FLAG_SECURE"
+- Sqlite3 - http://www.sqlite.org/cli.html
+- Realm Browser - Realm Browser - https://github.com/realm/realm-browser-osx
+- ProGuard - http://proguard.sourceforge.net/
+- Logcat - http://developer.android.com/tools/help/logcat.html
+- Burp Suite Professional - https://portswigger.net/burp/
+- OWASP ZAP - https://www.owasp.org/index.php/OWASP_Zed_Attack_Proxy_Project
+- Drozer - https://labs.mwrinfosecurity.com/tools/drozer/
+- Android Backup Extractor - https://github.com/nelenkov/android-backup-extractor
+- Memory Monitor - http://developer.android.com/tools/debugging/debugging-memory.html#ViewHeap
+- Eclipse’s MAT (Memory Analyzer Tool) standalone - https://eclipse.org/mat/downloads.php
+- Memory Analyzer which is part of Eclipse - https://www.eclipse.org/downloads/
+- Fridump - https://github.com/Nightbringer21/fridump
+- LiME - https://github.com/504ensicsLabs/LiME
